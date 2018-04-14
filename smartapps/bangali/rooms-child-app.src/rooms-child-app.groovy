@@ -10,6 +10,7 @@
 *  Contributors:
 *   https://github.com/Johnwillliam
 *   https://github.com/TonyFleisher
+*   https://github.com/BamaRayne
 *
 *  License:
 *  This program is free software: you can redistribute it and/or modify it under the terms of the GNU
@@ -36,10 +37,26 @@
 *
 ***********************************************************************************************************************/
 
-public static String version()      {  return "v0.20.0"  }
+public static String version()      {  return "v0.20.5"  }
 private static boolean isDebug()    {  return true  }
 
 /***********************************************************************************************************************
+*
+*  Version: 0.20.5
+*
+*   DONE:   7/13/2018
+*   1) changed message separator to '/' and added support for &is and &has.
+*   2) added save and restore sound level when playing announcements.
+*   3) restored lock only capability instead of using lock capability.
+*   4) added support for lock state contact sensor by @BamaRayne.
+*   5) added support for lock state switch and contact sensor to lock either on on/off or open/close by @BamaRayne.
+*   6) added missing dot to nightSetCT range.
+*
+*  Version: 0.20.1
+*
+*   DONE:   7/11/2018
+*   1) handle pause for hubitat.
+*   2) adapt timeTodayAfter for hubitat compatibility.
 *
 *  Version: 0.20.0
 *
@@ -996,9 +1013,9 @@ private pageAutoLevelSettings()     {
                 input "fadeLevelWake", "bool", title: "Fade up to wake time?", required: true, multiple: false, defaultValue: false, submitOnChange: true
                 if (fadeLevelWake)      {
                     input "fadeWakeBefore", "number", title: "Starting how many hours before?",
-                                        required: true, multiple: false, defaultValue: 1, range: "0..5", submitOnChange: true
+                                        required: true, multiple: false, defaultValue: 1, range: "0..10", submitOnChange: true
                     input "fadeWakeAfter", "number", title: "Ending how many hours after?",
-                                        required: true, multiple: false, defaultValue: 0, range: "0..5", submitOnChange: true
+                                        required: true, multiple: false, defaultValue: 0, range: "0..10", submitOnChange: true
                 }
                 else        {
                     paragraph "Starting how many hours before?\nset fade level up to set."
@@ -1009,9 +1026,9 @@ private pageAutoLevelSettings()     {
                 input "fadeLevelSleep", "bool", title: "Fade down to sleep time?", required: true, multiple: false, defaultValue: false, submitOnChange: true
                 if (fadeLevelSleep)      {
                     input "fadeSleepBefore", "number", title: "Starting how many hours before?",
-                                        required: true, multiple: false, defaultValue: 2, range: "0..5", submitOnChange: true
+                                        required: true, multiple: false, defaultValue: 2, range: "0..10", submitOnChange: true
                     input "fadeSleepAfter", "number", title: "Ending how many hours after?",
-                                        required: true, multiple: false, defaultValue: 0, range: "0..5", submitOnChange: true
+                                        required: true, multiple: false, defaultValue: 0, range: "0..10", submitOnChange: true
                 }
                 else        {
                     paragraph "Starting how many hours before?\nset fade level down to set."
@@ -1035,9 +1052,9 @@ private pageAutoLevelSettings()     {
                 input "fadeCTWake", "bool", title: "Fade up to wake time?", required: true, multiple: false, defaultValue: false, submitOnChange: true
                 if (autoColorTemperature && fadeCTWake)       {
                     input "fadeKWakeBefore", "number", title: "Starting how many hours before?",
-                                        required: true, multiple: false, defaultValue: 1, range: "0..5", submitOnChange: true
+                                        required: true, multiple: false, defaultValue: 1, range: "0..10", submitOnChange: true
                     input "fadeKWakeAfter", "number", title: "Ending how many hours after?",
-                                        required: true, multiple: false, defaultValue: 0, range: "0..5", submitOnChange: true
+                                        required: true, multiple: false, defaultValue: 0, range: "0..10", submitOnChange: true
                 }
                 else    {
                     paragraph "Starting how many hours before?\nset fade auto color temperature up to set."
@@ -1048,9 +1065,9 @@ private pageAutoLevelSettings()     {
                 input "fadeCTSleep", "bool", title: "Fade down to sleep time?", required: true, multiple: false, defaultValue: false, submitOnChange: true
                 if (autoColorTemperature && fadeCTSleep)       {
                     input "fadeKSleepBefore", "number", title: "Starting how many hours before?",
-                                        required: true, multiple: false, defaultValue: 5, range: "0..5", submitOnChange: true
+                                        required: true, multiple: false, defaultValue: 5, range: "0..10", submitOnChange: true
                     input "fadeKSleepAfter", "number", title: "Ending how many hours after?",
-                                        required: true, multiple: false, defaultValue: 0, range: "0..5", submitOnChange: true
+                                        required: true, multiple: false, defaultValue: 0, range: "0..10", submitOnChange: true
                 }
                 else    {
                     paragraph "Starting how many hours before?\nset fade color temperature down to set."
@@ -1479,8 +1496,8 @@ private dateInputValid(dateInputStart, dateInputEnd)       {
         def dateIE = yearTranslate(dateInputEnd)
         def dIE = Date.parse("yyyy/M/d HH:mm:ss z", dateIE + ' 23:59:59 ' + location.timeZone.getDisplayName())
         def cDate = new Date(now())
-        if (cDate > dIE)    {
-//            use(TimeCategory)   {
+        if (cDate > dIE)
+            use(TimeCategory)   {
                 dIS = dIS + 1.year
                 dIE = dIE + 1.year
             }
@@ -1581,7 +1598,8 @@ private pageAsleepSettings() {
             }
             else        {
                 paragraph "Power value to set room to ASLEEP?\nselect power device in other devices to set."
-                paragraph "Power stays below for how many seconds to reset ASLEEP state?\nselect power device in other devices to set."
+                paragraph "Power value triggers ASLEEP from VACANT state?"
+                paragraph "Power stays below for how many seconds to reset ASLEEP state?"
             }
             input "noAsleep", "number", title: "Timeout ASLEEP state after how many hours?", required: false, multiple: false, defaultValue: null, range: "1..99"
             if (contactSensor)
@@ -1597,7 +1615,7 @@ private pageAsleepSettings() {
             if (nightSwitches)      {
                 input "nightSetLevelTo", "enum", title: "Set Level When Turning ON?", required: false, multiple: false, defaultValue: null,
                                         options: [[1:"1%"],[5:"5%"],[10:"10%"],[20:"20%"],[30:"30%"],[40:"40%"],[50:"50%"],[60:"60%"],[70:"70%"],[80:"80%"],[90:"90%"],[100:"100%"]]
-                input "nightSetCT", "number", title: "Set color temperature when turning ON?", required: false, multiple: false, defaultValue: null, range: "1500.7500"
+                input "nightSetCT", "number", title: "Set color temperature when turning ON?", required: false, multiple: false, defaultValue: null, range: "1500..7500"
                 input "noMotionAsleep", "number", title: "Timeout seconds for night lights?", required: false, multiple: false, defaultValue: null, range: "5..99999"
                 input "nightTurnOn", "enum", title: "Turn on night lights when?", required: true, multiple: true, defaultValue: 1,
                                         options: [[1:"Motion in ASLEEP state"],[2:"State changes to ASLEEP"],[3:"State changes away from ASLEEP"]]
@@ -1638,7 +1656,16 @@ private pageAsleepSettings() {
 private pageLockedSettings()      {
 	dynamicPage(name: "pageLockedSettings", title: "Locked Settings", install: false, uninstall: false)     {
         section("Switch configuration for LOCKED state:", hideable:false)	{
-            input "lockedSwitch", "capability.switch", title: "Which switch turns ON?", required:false, multiple: false
+            input "lockedSwitch", "capability.switch", title: "Which switch for LOCKED state?", required: false, multiple: false, submitOnChange: true
+            if (lockedSwitch)
+            	input "lockedSwitchCmd", "bool", title: "When switch turns ON? (otherwise when switch turns off)", required: true, defaultValue: true
+            else
+                paragraph "When switch turns ON?\nselect locked switch above to set"
+            input "lockedContact", "capability.contactSensor", title: "Which contact for LOCKED state?", required:false, multiple: false, submitOnChange: true
+            if (lockedContact)
+            	input "lockedContactCmd", "bool", title: "When contact closes? (toherwise when contact opens)", required: true, defaultValue: true
+            else
+                paragraph "When contact closes?\nselect locked contact above to set"
             input "lockedTurnOff", "bool", title: "Turn off switches when room changes to LOCKED?", required: false, multiple: false, defaultValue: false
             input "unLocked", "number", title: "Timeout LOCKED state after how many hours?", required: false, multiple: false, defaultValue: null, range: "1..99"
         }
@@ -1709,7 +1736,7 @@ private pageRoomTemperature()       {
     }
 }
 
-private pageAdjacentRooms() {
+private pageAdjacentRooms()     {
 	def roomNames = parent.getRoomNames(app.id)
 	dynamicPage(name: "pageAdjacentRooms", title: "Adjacent Rooms Settings", install: false, uninstall: false)    {
 		section("Action when there is motion in ADJACENT rooms:", hideable: false)		{
@@ -1726,7 +1753,7 @@ private pageAdjacentRooms() {
 	}
 }
 
-private pageGeneralSettings() {
+private pageGeneralSettings()       {
     boolean isFarenheit = (location.temperatureScale == 'F')
 	dynamicPage(name: "pageGeneralSettings", title: "General Settings", install: false, uninstall: false) {
 		section("Mode settings for AWAY and PAUSE modes?", hideable: false)		{
@@ -1865,7 +1892,7 @@ def updateRoom(adjMotionSensors)     {
 	initialize()
     boolean isFarenheit = (location.temperatureScale == 'F')
 //    def child = getChildDevice(getRoom())
-	subscribe(location, modeEventHandler)
+	subscribe(location, "mode", modeEventHandler)
     state.noMotion = ((noMotion && noMotion >= 5) ? noMotion : null)
     state.noMotionEngaged = ((noMotionEngaged && noMotionEngaged >= 5) ? noMotionEngaged : null)
 	if (motionSensors)	{
@@ -1970,10 +1997,35 @@ def updateRoom(adjMotionSensors)     {
     state.nightSetCT = (nightSetCT ? nightSetCT as Integer : null)
     state.noAsleep = ((noAsleep && noAsleep >= 1) ? (noAsleep * 60 * 60) : null)
     ifDebug("updateRoom 4")
-    if (lockedSwitch)      {
-    	subscribe(lockedSwitch, "switch.on", lockedSwitchOnEventHandler)
-    	subscribe(lockedSwitch, "switch.off", lockedSwitchOffEventHandler)
-	}
+
+    if (lockedContact) {
+/*        if (lockedContactCmd == "open")      {
+        	subscribe(lockedContact, "contact.open", lockedContactOpenEventHandler)
+    		subscribe(lockedContact, "contact.closed", lockedContactClosedEventHandler)
+        }
+        if (lockedContactCmd == "closed")      {
+        	subscribe(lockedContact, "contact.open", lockedContactClosedEventHandler)
+    		subscribe(lockedContact, "contact.closed", lockedContactOpenEventHandler)
+    	}
+*/
+        subscribe(lockedContact, "contact.${(lockedContactCmd ? 'open' : 'closed')}", lockedContactOpenEventHandler)
+        subscribe(lockedContact, "contact.${(lockedContactCmd ? 'closed' : 'open')}", lockedContactClosedEventHandler)
+    }
+
+    if (lockedSwitch) {
+/*        if (lockedSwitchCmd)        {
+            subscribe(lockedSwitch, "switch.on", lockedSwitchOnEventHandler)
+            subscribe(lockedSwitch, "switch.off", lockedSwitchOffEventHandler)
+        }
+        else        {
+            subscribe(lockedSwitch, "switch.off", lockedSwitchOnEventHandler)
+            subscribe(lockedSwitch, "switch.on", lockedSwitchOffEventHandler)
+		}
+*/
+        subscribe(lockedSwitch, "switch.${(lockedSwitchCmd ? 'on' : 'off')}", lockedSwitchOnEventHandler)
+        subscribe(lockedSwitch, "switch.${(lockedSwitchCmd ? 'off' : 'on')}", lockedSwitchOffEventHandler)
+    }
+
     if (windowShades)   subscribe(windowShades, "windowShade", windowShadeEventHandler);
     if (thermoOverride)     {
         if (roomThermostat)     subscribe(roomThermostat, "thermostat", roomThermostatEventHandler);
@@ -2150,6 +2202,25 @@ private isAnyLSwitchOn()   {
     ifDebug("isAnyLSwitchOn")
     return (lockedSwitch ? (lockedSwitch.currentSwitch.contains('on') ? 1 : 0) : -1)
 }
+
+/*
+private isAnyLSwitchOff()   {
+    ifDebug("isAnyLSwitchOff")
+    return (lockedSwitch ? (lockedSwitch.currentSwitch.contains('off') ? 1 : 0) : -1)
+}
+*/
+
+/*
+private isAnyLContactOpen()   {
+    ifDebug("isAnyLContactOpen")
+    return (lockedSwitch ? (lockedSwitch.currentSwitch.contains('on') ? 1 : 0) : -1)
+}
+
+private isAnyLContactClosed()   {
+    ifDebug("isAnyLContactClosed")
+    return (lockedSwitch ? (lockedSwitch.currentSwitch.contains('off') ? 1 : 0) : -1)
+}
+*/
 
 def updateRulesToState()    {
     ifDebug("updateRulesToState")
@@ -2859,21 +2930,64 @@ def	asleepSwitchOffEventHandler(evt)	{
 }
 
 def	lockedSwitchOnEventHandler(evt)     {
+// log.info "lockedSwitchOnEventHandler has been called = On"
     ifDebug("lockedSwitchOnEventHandler")
     def child = getChildDevice(getRoom())
     child.updateLSwitchInd(isAnyLSwitchOn())
+/*    if (lockedSwitchCmd)
+        child.updateLSwitchInd(isAnyLSwitchOn())
+    else
+        child.updateLSwitchInd(isAnyLSwitchOff())
+*/
     if (!checkPauseModesAndDoW())    return;
-    child.generateEvent(locked)
+    if (child?.currentValue(occupancy) != locked)       child.generateEvent(locked)
 }
 
 def	lockedSwitchOffEventHandler(evt)	{
+// log.info "lockedSwtichOffEventHandler has been called = Off"
     ifDebug("lockedSwitchOffEventHandler")
     def child = getChildDevice(getRoom())
     child.updateLSwitchInd(isAnyLSwitchOn())
+/*    if (lockedSwitchCmd == "on") {
+    child.updateLSwitchInd(isAnyLSwitchOn())
+    }
+    if (lockedSwitchCmd == "off") {
+    child.updateLSwitchInd(isAnyLSwitchOff())
+    }
+*/
     if (!checkPauseModesAndDoW())    return;
     if (child?.currentValue(occupancy) == locked)       child.generateEvent(checking);
 }
 
+def	lockedContactOpenEventHandler(evt)     {
+// log.info "lockedContactOpenEventHandler has been called = Open"
+    ifDebug("lockedContactOpenEventHandler")
+    def child = getChildDevice(getRoom())
+/*    if (lockedContactCmd == "open") {
+    child.updateLContactInd(isAnyLContactOpen())
+    }
+    if (lockedContactCmd == "closed") {
+    child.updateLContactInd(isAnyLContactClosed())
+    }
+*/
+    if (!checkPauseModesAndDoW())    return;
+    if (child?.currentValue(occupancy) == locked)       child.generateEvent(checking);
+}
+
+def	lockedContactClosedEventHandler(evt)	{
+// log.info "lockedContactClosedEventHandler has been called = Closed"
+    ifDebug("lockedContactClosedEventHandler")
+    def child = getChildDevice(getRoom())
+/*    if (lockedContactCmd == "open") {
+    child.updateLContactInd(isAnyLContactOpen())
+    }
+    if (lockedContactCmd == "closed") {
+    child.updateLContactInd(isAnyLContactClosed())
+    }
+*/
+    if (!checkPauseModesAndDoW())    return;
+    if (child?.currentValue(occupancy) != locked)       child.generateEvent(locked);
+}
 
 /*
 def processCoolHeat()       {
@@ -3005,17 +3119,15 @@ def processCoolHeat()       {
             if (['1', '3'].contains(maintainRoomTemp))      {
                 state.roomThermoTurnedOn = false
                 state.roomCoolTurnedOn = false
-                (useThermostat ? roomThermostat.auto() : roomCoolSwitch.off())
-                pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                (useThermostat ? roomThermostat.auto() : roomCoolSwitch.off()); pauseIt()
             }
             if (['2', '3'].contains(maintainRoomTemp))      {
                 state.roomThermoTurnedOn = false
                 state.roomHeatTurnedOn = false
-                (useThermostat ? roomThermostat.auto() : roomHeatSwitch.off())
-                pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                (useThermostat ? roomThermostat.auto() : roomHeatSwitch.off()); pauseIt()
             }
             if (roomFanSwitch)      {
-                roomFanSwitch.off();        pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                roomFanSwitch.off(); pauseIt()
             }
         }
         updateMaintainIndP(temp)
@@ -3103,13 +3215,13 @@ def processCoolHeat()       {
             if (temperature >= coolHigh)     {
                 if (useThermostat)      {
                     state.roomThermoTurnedOn = true
-                    roomThermostat.setCoolingSetpoint(thisRule.coolTemp - thermoToTempSensor); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
-                    roomThermostat.fanAuto(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
-                    roomThermostat.cool(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                    roomThermostat.setCoolingSetpoint(thisRule.coolTemp - thermoToTempSensor); pauseIt()
+                    roomThermostat.fanAuto(); pauseIt()
+                    roomThermostat.cool(); pauseIt()
                 }
                 else if (roomCoolSwitch.currentSwitch == off)     {
                     state.roomCoolTurnedOn = true
-                    roomCoolSwitch.on(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                    roomCoolSwitch.on(); pauseIt()
                     updateMaintainIndP(roomCoolTemp)
                     updateMaintainIndicator = false
                 }
@@ -3117,8 +3229,7 @@ def processCoolHeat()       {
             else if (temperature <= coolLow)    {
                 state.roomThermoTurnedOn = false
                 state.roomCoolTurnedOn = false
-                (useThermostat ? roomThermostat.auto() : roomCoolSwitch.off())
-                pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                (useThermostat ? roomThermostat.auto() : roomCoolSwitch.off()); pauseIt()
             }
         }
         if (['2', '3'].contains(maintainRoomTemp) && ((useThermostat && roomThermostat) || (!useThermostat && roomHeatSwitch)))      {
@@ -3127,19 +3238,18 @@ def processCoolHeat()       {
             if (temperature >= heatHigh)    {
                 state.roomThermoTurnedOn = false
                 state.roomHeatTurnedOn = false
-                (useThermostat ? roomThermostat.auto() : roomHeatSwitch.off())
-                pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                (useThermostat ? roomThermostat.auto() : roomHeatSwitch.off()); pauseIt()
             }
             else if (temperature <= heatLow)        {
                 if (useThermostat)      {
                     state.roomThermoTurnedOn = true
-                    roomThermostat.setHeatingSetpoint(thisRule.heatTemp - thermoToTempSensor); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
-                    roomThermostat.fanAuto(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
-                    roomThermostat.heat(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                    roomThermostat.setHeatingSetpoint(thisRule.heatTemp - thermoToTempSensor); pauseIt()
+                    roomThermostat.fanAuto(); pauseIt()
+                    roomThermostat.heat(); pauseIt()
                 }
                 else if (roomHeatSwitch.currentSwitch == off)     {
                     state.roomHeatTurnedOn = true
-                    roomHeatSwitch.on(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                    roomHeatSwitch.on(); pauseIt()
                     updateMaintainIndP(roomHeatTemp)
                     updateMaintainIndicator = false
                 }
@@ -3150,14 +3260,12 @@ def processCoolHeat()       {
         if (['1', '3'].contains(maintainRoomTemp))      {
             state.roomThermoTurnedOn = false
             state.roomCoolTurnedOn = false
-            (useThermostat ? roomThermostat.auto() : roomCoolSwitch.off())
-            pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+            (useThermostat ? roomThermostat.auto() : roomCoolSwitch.off()); pauseIt()
         }
         if (['2', '3'].contains(maintainRoomTemp))      {
             state.roomThermoTurnedOn = false
             state.roomHeatTurnedOn = false
-            (useThermostat ? roomThermostat.auto() : roomHeatSwitch.off())
-            pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+            (useThermostat ? roomThermostat.auto() : roomHeatSwitch.off()); pauseIt()
         }
     }
     if (roomFanSwitch)        {
@@ -3166,14 +3274,14 @@ def processCoolHeat()       {
             def fanMediumTemp   = (thisRule.fanOnTemp + thisRule.fanSpeedIncTemp + 0f).round(1)
             def fanHighTemp     = (thisRule.fanOnTemp + (thisRule.fanSpeedIncTemp * 2f)).round(1)
 //            ifDebug("temperature: $temperature | fanOnTemp: $thisRule.fanOnTemp | fanLowTemp: $fanLowTemp | fanMediumTemp: $fanMediumTemp | fanHighTemp: $fanHighTemp")
-            if (temperature >= fanHighTemp)         { roomFanSwitch.on(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)); roomFanSwitch.setLevel(fanHigh); }
-            else if (temperature >= fanMediumTemp)  { roomFanSwitch.on(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)); roomFanSwitch.setLevel(fanMedium); }
-            else if (temperature >= fanLowTemp)     { roomFanSwitch.on(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)); roomFanSwitch.setLevel(fanLow); }
+            if (temperature >= fanHighTemp)         { roomFanSwitch.on(); pauseIt(); roomFanSwitch.setLevel(fanHigh); }
+            else if (temperature >= fanMediumTemp)  { roomFanSwitch.on(); pauseIt(); roomFanSwitch.setLevel(fanMedium); }
+            else if (temperature >= fanLowTemp)     { roomFanSwitch.on(); pauseIt(); roomFanSwitch.setLevel(fanLow); }
             else                                    roomFanSwitch.off();
         }
         else
             roomFanSwitch.off()
-        pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+        pauseIt()
     }
     updateThermostatIndP(isHere)
     if (updateMaintainIndicator)    {
@@ -3659,6 +3767,7 @@ private processRules(passedRoomState = null, switchesOnly = false)     {
             executeRule(thisRule, switchesOnly)
         }*/
         rules.each      {  executeRule(it, switchesOnly)  }
+        state.switchesPreventToggle = []
         return true
     }
     else
@@ -3709,11 +3818,11 @@ private turnSwitchesOnAndOff(thisRule)       {
             def colorTemperature = null
             def level = null
             thisRule.switchesOn.each      {
-                it.on(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                it.on(); pauseIt()
                 def itID = it.getId()
                 if (thisRule.color && state.switchesHasColor[itID])     {
     //                if (it.currentColor != thisRule.hue)
-                        it.setColor(thisRule.hue); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                        it.setColor(thisRule.hue); pauseIt()
                 }
                 else if ((thisRule.colorTemperature || (thisRule.level == 'AL' && autoColorTemperature)) && state.switchesHasColorTemperature[itID])       {
                     if (!colorTemperature)      {
@@ -3724,7 +3833,7 @@ private turnSwitchesOnAndOff(thisRule)       {
                     }
     //                    if (it.currentColorTemperature != colorTemperature)
                     if (colorTemperature)
-                        it.setColorTemperature(colorTemperature); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                        it.setColorTemperature(colorTemperature); pauseIt()
                 }
                 if (thisRule.level && state.switchesHasLevel[itID])     {
                     if (!level)     {
@@ -3735,7 +3844,7 @@ private turnSwitchesOnAndOff(thisRule)       {
                     }
     //                if (it.currentLevel != level)
                     if (level)
-                        it.setLevel(level); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                        it.setLevel(level); pauseIt()
                 }
             }
         }
@@ -3746,7 +3855,7 @@ private turnSwitchesOnAndOff(thisRule)       {
 //    if (thisRule.switchesOff)       {thisRule.switchesOff.off();
     if (thisRule.switchesOff)
         thisRule.switchesOff.each       {
-            if (!state.switchesPreventToggle.contains(it.getId()))    {  it.off();  pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))  }
+            if (!state.switchesPreventToggle.contains(it.getId()))    {  it.off(); pauseIt()  }
         }
 }
 
@@ -3769,8 +3878,8 @@ private holidayLightsRotate(thisRule)       {
     def hT = getHubType()
     thisRule.switchesOn.each    {
         def holiColor = state.holiHues."$cI"
-        it.setColor(holiColor); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
-        it.setLevel(state.holiLevel); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+        it.setColor(holiColor); pauseIt()
+        it.setLevel(state.holiLevel); pauseIt()
         cI = (cI < (state.holiColorCount -1) ? cI + 1 : 0)
     }
 }
@@ -3800,41 +3909,41 @@ private holidayLightsTwinkle(thisRule)       {
     cI = 0
     thisRule.switchesOn.each    {
         def tw = state.holiTW."$cI"
-        it.setColor(state.holiHues."$tw"); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
-        it.setLevel(state.holiLevel); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+        it.setColor(state.holiHues."$tw"); pauseIt()
+        it.setLevel(state.holiLevel); pauseIt()
         cI = cI + 1
     }
 }
 
 private runActions(thisRule)    {
     def hT = getHubType()
-    if (thisRule.actions)   {  thisRule.actions.each  {  location.helloHome?.execute(it); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))  }  }
+    if (thisRule.actions)   {  thisRule.actions.each  {  location.helloHome?.execute(it); pauseIt()  }  }
 }
 
 private executePiston(thisRule)    {
     def hT = getHubType()
-    if (thisRule.piston)  { webCoRE_execute(thisRule.piston); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)) }
+    if (thisRule.piston)  { webCoRE_execute(thisRule.piston); pauseIt() }
 }
 
 private musicAction(thisRule)       {
     def hT = getHubType()
     if (musicDevice && thisRule.musicAction)        {
         if (thisRule.musicAction == '1')    {
-            musicDevice.play(); ; pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+            musicDevice.play(); ; pauseIt()
 // to unmute or not?            musicDevice.unmute()
         }
-        else if (thisRule.musicAction == '2')   { musicDevice.pause(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)) }
+        else if (thisRule.musicAction == '2')   { musicDevice.pause(); pauseIt() }
     }
 }
 
 private setShade(thisRule)      {
     def hT = getHubType()
     switch(thisRule.shade)      {
-        case '0':       windowShades.open(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU));             break;
-        case '1':       windowShades.close(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU));            break;
-        case 'P1':      windowShades.presetPosition(1); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU));  break;
-        case 'P2':      windowShades.presetPosition(2); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU));  break;
-        case 'P3':      windowShades.presetPosition(3); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU));  break;
+        case '0':       windowShades.open();  pauseIt();            break;
+        case '1':       windowShades.close(); pauseIt();            break;
+        case 'P1':      windowShades.presetPosition(1); pauseIt();  break;
+        case 'P2':      windowShades.presetPosition(2); pauseIt();  break;
+        case 'P3':      windowShades.presetPosition(3); pauseIt();  break;
         default:        break;
     }
 }
@@ -4131,12 +4240,13 @@ private calculateLK(min, max, fadeW, fadeWB, fadeWA, fadeS, fadeSB, fadeSA)     
 private timeTodayA(whichDate, thisDate, timeZone)      {
     def newDate
     if (thisDate.before(whichDate))     {
-//        use (groovy.time.TimeCategory)   {
-            def duration = TimeCategory.minus(whichDate, thisDate)
-//            def duration = whichDate - thisDate
-            ifDebug("$whichDate | $thisDate | $duration")
-            newDate = thisDate.plus(duration.days + 1)
-//        }
+        int dura = (int) ((whichDate.getTime() - thisDate.getTime()) / 86400000L)
+//        ifDebug("$whichDate | $thisDate | $duration")
+        use (TimeCategory)   {
+//            newDate = thisDate.plus(duration.days + 1)
+            newDate = thisDate + dura.day + 1.day
+        }
+//        ifDebug("$newDate")
     }
     else
         newDate = thisDate
@@ -4220,8 +4330,7 @@ def dimLights()     {
             if (it.currentSwitch == 'on')      {
                 if (it.hasCommand("setLevel"))     {
                     def currentLevel = it.currentLevel
-                    it.setLevel((currentLevel > state.dimByLevel ? currentLevel - state.dimByLevel : 1))
-                    pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                    it.setLevel((currentLevel > state.dimByLevel ? currentLevel - state.dimByLevel : 1)); pauseIt()
                     state.preDimLevel << [(it.getId()):currentLevel]
                 }
             }
@@ -4231,9 +4340,9 @@ def dimLights()     {
         if (allSwitches && state.dimToLevel)
             allSwitches.each      {
                 if (it.hasCommand("setLevel"))     {
-                    it.on(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                    it.on(); pauseIt()
                     def currentLevel = it.currentLevel
-                    it.setLevel(state.dimToLevel); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+                    it.setLevel(state.dimToLevel); pauseIt()
                     state.preDimLevel << [(it.getId()):currentLevel]
                 }
             }
@@ -4252,7 +4361,7 @@ private unDimLights(roomState)       {
                 if (it.hasCommand("setLevel"))     {
                     def newLevel = state.preDimLevel[(it.getId())]
                     ifDebug("newLevel: it: $it | $newLevel")
-                    if (newLevel > 0)   { it.setLevel(newLevel); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)) }
+                    if (newLevel > 0)   { it.setLevel(newLevel); pauseIt() }
                 }
             }
     }
@@ -4266,9 +4375,7 @@ def switches2Off()       {
     def switchesThatAreOn = whichSwitchesAreOn(true)
     def hT = getHubType()
     switchesThatAreOn.each  {
-        it.off(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU));
-//        if (hT == _SmartThings)     pause(pauseMSec);
-//        else                        pause(50);
+        it.off(); pauseIt();
     }
 }
 
@@ -4850,12 +4957,7 @@ def turnSwitchesAllOnOrOff(turnOn)     {
     if (switches)       {
         def action = (turnOn ? on : off)
         def hT = getHubType()
-        switches.each   {  if (it.currentSwitch != action)   { it."$action"(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)) }  }
-/*        if (turnOn)
-            switches.each   {  if (it.currentSwitch != 'on')   { it.on(); pause(pauseMSec) }  }
-        else
-            switches.each   {  if (it.currentSwitch != 'off')  { it.off(); pause(pauseMSec) }  }
-*/
+        switches.each   {  if (it.currentSwitch != action)   { it."$action"(); pauseIt() }  }
     }
 }
 
@@ -4908,12 +5010,12 @@ def dimNightLights()     {
     if (nightSwitches)     {
         def hT = getHubType()
         nightSwitches.each      {
-            it.on(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU))
+            it.on(); pauseIt()
             def itID = it.getId()
             if (state.nightSetLevelTo && state.switchesHasLevel[itID])
-                { it.setLevel(state.nightSetLevelTo); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)) }
+                { it.setLevel(state.nightSetLevelTo); pauseIt() }
             if (state.nightSetCT && state.switchesHasColorTemperature[itID])
-                { it.setColorTemperature(state.nightSetCT); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)) }
+                { it.setColorTemperature(state.nightSetCT); pauseIt() }
         }
         getChildDevice(getRoom()).updateNSwitchInd(1)
     }
@@ -4923,7 +5025,7 @@ def nightSwitchesOff()      {
     unschedule('nightSwitchesOff')
     if (nightSwitches)  {
         def hT = getHubType()
-        nightSwitches.each      { it.off(); pause((hT == _SmartThings ? pauseMSecST : pauseMSecHU)) }
+        nightSwitches.each      { it.off(); pauseIt() }
         getChildDevice(getRoom()).updateNSwitchInd(0)
     }
 }
@@ -4954,6 +5056,12 @@ def batteryDevices()      {
         }
     }
     return allBatteryDevices
+}
+
+private pauseIt()       {
+    def hT = getHubType()
+    if (hT == _SmartThings)     pause(pauseMSecST);
+    else if (hT == _Hubitat)    pauseExecution(pauseMSecHU);
 }
 
 //------------------------------------------------------------------------------------------------------------------------//
