@@ -24,14 +24,52 @@
 *
 ***********************************************************************************************************************/
 
-public static String version()      {  return "v0.20.5"  }
+public static String version()      {  return "v0.27.5"  }
 private static boolean isDebug()    {  return true  }
 
 /***********************************************************************************************************************
 *
+*  Version: 0.27.5
+*
+*   DONE:   5/2/2018
+*   1) significant updates to documentation. latest on github: https://github.com/adey/bangali
+*   2) turned down the delay between commands on hubitat
+*   3) rooms can now be renamed which will also rename the device for the room.
+*   4) updated text on input settings.
+*   5) added button for occupied settings.
+*   6) all buttons now flip between state for that button and if in that state already to checking state.
+*   7) added push button support for hubitat dashboard.
+*   8) swatted a bug here and a bug there.
+*
+*  Version: 0.26.0
+*
+*   DONE:   4/22/2018
+*   1) added motion support for welcome home announcement.
+*   2) added notification by color, this currently is not constrained by announce only hours settings.
+*
+*  Version: 0.25.0
+*
+*   DONE:   4/20/2018
+*   1) get buttons working on hubitat.
+*
+*  Version: 0.21.0
+*
+*   DONE:   4/19/2018
+*   1) mostly readme updates.
+*
+*  Version: 0.20.9
+*
+*   DONE:   4/15/2018
+*   1) time today change for hubitat compatibility.
+*
+*  Version: 0.20.7
+*
+*   DONE:   4/14/2018
+*   1) added a bunch of state variable for use with hubitat dashboard tiles.
+*
 *  Version: 0.20.5
 *
-*   DONE:   7/13/2018
+*   DONE:   4/13/2018
 *   1) changed message separator to '/' and added support for &is and &has.
 *   2) added save and restore sound level when playing announcements.
 *   3) restored lock only capability instead of using lock capability.
@@ -41,13 +79,13 @@ private static boolean isDebug()    {  return true  }
 *
 *  Version: 0.20.1
 *
-*   DONE:   7/11/2018
+*   DONE:   4/11/2018
 *   1) handle pause for hubitat.
 *   2) adapt timeTodayAfter for hubitat compatibility.
 *
 *  Version: 0.20.0
 *
-*   DONE:   7/4/2018
+*   DONE:   4/4/2018
 *   1) change lock only to lock because hubitat does not support lock only capability.
 *   2) add option for cooling / heating override in minutes.
 *   3) added option to check room windoes before turning on cooling / heating.
@@ -479,6 +517,11 @@ private static boolean isDebug()    {  return true  }
 *
 ***********************************************************************************************************************/
 
+import groovy.transform.Field
+
+@Field final String _SmartThings = 'ST'
+@Field final String _Hubitat     = 'HU'
+
 metadata {
 	definition (
     	name: "rooms occupancy",
@@ -486,12 +529,19 @@ metadata {
         author: "bangali")		{
 		capability "Actuator"
 		capability "Button"
+//		capability "PushableButton"		// hubitat changed `Button` to `PushableButton`  2018-04-20
 		capability "Sensor"
 		capability "Switch"
 		capability "Beacon"
 		capability "Lock Only"
 //		capability "Lock"		// hubitat does not support `Lock Only` 2018-04-07
 		attribute "occupancy", "enum", ['occupied', 'checking', 'vacant', 'locked', 'reserved', 'kaput', 'donotdisturb', 'asleep', 'engaged']
+		attribute "alarmEnabled", "boolean"
+		attribute "alarmTime", "String"
+		attribute "alarmDayOfWeek", "String"
+		attribute "alarmRepeat", "number"
+		attribute "alarmSound", "String"
+		attribute "countdown", "String"
 		command "occupied"
         command "checking"
 		command "vacant"
@@ -501,6 +551,7 @@ metadata {
 		command "donotdisturb"
 		command "asleep"
 		command "engaged"
+//		command "push"		// for use with hubitat useful with dashbooard 2018-04-24
 		command "turnOnAndOffSwitches"
 		command "turnSwitchesAllOn"
 		command "turnSwitchesAllOff"
@@ -515,7 +566,7 @@ metadata {
 
 	preferences		{
 		section("Alarm settings:")		{
-			input "alarmDisabled", "bool", title: "Disable alarm?", required: true, multiple: false
+			input "alarmDisabled", "bool", title: "Disable alarm?", required: true, multiple: false, defaultValue: true
 			input "alarmTime", "time", title: "Alarm Time?", required: false, multiple: false
 			input "alarmVolume", "number", title: "Volume?", description: "0-100%", required: (alarmTime ? true : false), range: "1..100"
 			input "alarmSound", "enum", title:"Sound?", required: (alarmTime ? true : false), multiple: false,
@@ -903,20 +954,54 @@ def installed()		{  initialize()  }
 def updated()		{  initialize()  }
 
 def	initialize()	{
-	sendEvent(name: "numberOfButtons", value: 9)
+	unschedule()
+	state
+	sendEvent(name: "numberOfButtons", value: 9, descriptionText: "set number of buttons to 9.", isStateChange: true, displayed: true)
 	state.timer = 0
 	setupAlarmC()
+	sendEvent(name: "countdown", value: '0s', descriptionText: "countdown timer: 0s", isStateChange: true, displayed: true)
+}
+
+def getHubType()        {
+    if (!state.hubId)   state.hubId = location.hubs[0].id.toString()
+    if (state.hubId.length() > 5)   return _SmartThings;
+    else                            return _Hubitat;
 }
 
 def setupAlarmC()	{
-	unschedule()
 	if (parent)		parent.setupAlarmP(alarmDisabled, alarmTime, alarmVolume, alarmSound, alarmRepeat, alarmDayOfWeek);
+	if (alarmDayOfWeek)      {
+        state.alarmDayOfWeek = []
+        switch(alarmDayOfWeek)       {
+            case '1':	state.alarmDayOfWeek << 'Mon';		break
+			case '2':	state.alarmDayOfWeek << 'Tue';		break
+			case '3':	state.alarmDayOfWeek << 'Wed';		break
+			case '4':	state.alarmDayOfWeek << 'Thu';		break
+			case '5':	state.alarmDayOfWeek << 'Fri';		break
+			case '6':	state.alarmDayOfWeek << 'Sat';		break
+			case '7':	state.alarmDayOfWeek << 'Sun';		break
+            case '8':   ['Mon','Tue','Wed','Thu','Fri'].each    { state.alarmDayOfWeek << it };    break
+            case '9':   ['Sat','Sun'].each						{ state.alarmDayOfWeek << it };    break
+            default:    state.alarmDayOfWeek = null;		break
+        }
+    }
+    else
+        state.alarmDayOfWeek = ''
+	if (alarmSound)
+		state.alarmSound = [1:"Bell 1", 2:"Bell 2", 3:"Dogs Barking", 4:"Fire Alarm", 5:"Piano", 6:"Lightsaber"][alarmSound as Integer]
+	else
+		state.alarmSound = ''
+	sendEvent(name: "alarmEnabled", value: ((alarmDisabled || !alarmTime) ? 'No' : 'Yes'), descriptionText: "alarm enabled is ${(!alarmDisabled)}", isStateChange: true, displayed: true)
+	sendEvent(name: "alarmTime", value: "${(alarmTime ? timeToday(alarmTime, location.timeZone).format("HH:mm", location.timeZone) : '')}", descriptionText: "alarm time is ${alarmTime}", isStateChange: true, displayed: true)
+	sendEvent(name: "alarmDayOfWeek", value: "$state.alarmDayOfWeek", descriptionText: "alarm days of week is $state.alarmDayOfWeek", isStateChange: true, displayed: true)
+	sendEvent(name: "alarmSound", value: "$state.alarmSound", descriptionText: "alarm sound is $state.alarmSound", isStateChange: true, displayed: true)
+	sendEvent(name: "alarmRepeat", value: alarmRepeat, descriptionText: "alarm sounds is repeated $alarmRepeat times", isStateChange: true, displayed: true)
 }
 
 def on()	{
 	def toState = parent?.roomDeviceSwitchOnP()
 	toState = (toState ? toState as String : 'occupied')
-	ifDebug("on: $toState")
+//	ifDebug("on: $toState")
 	switch(toState)		{
 		case 'occupied':	occupied();		break
 		case 'engaged':		engaged();		break
@@ -927,6 +1012,18 @@ def on()	{
 }
 
 def	off()		{  vacant()  }
+
+def push(button)		{
+	ifDebug("$button")
+	switch(button)		{
+		case 1:		occupied();		break
+		case 3:		vacant();		break
+		case 4:		locked();		break
+		case 8:		asleep();		break
+		case 9:		engaged();		break
+		default:					break
+	}
+}
 
 def lock()		{  locked() }
 
@@ -971,7 +1068,11 @@ private updateOccupancy(occupancy = null) 	{
     }
 	sendEvent(name: "occupancy", value: occupancy, descriptionText: "${device.displayName} changed to ${occupancy}", isStateChange: true, displayed: true)
     def button = buttonMap[occupancy]
-	sendEvent(name: "button", value: "pushed", data: [buttonNumber: button], descriptionText: "$device.displayName button $button was pushed.", isStateChange: true)
+	if (getHubType() == _SmartThings)
+		sendEvent(name: "button", value: "pushed", data: [buttonNumber: button], descriptionText: "$device.displayName button $button was pushed.", isStateChange: true)
+	else
+		sendEvent(name:"pushed", value:button, descriptionText: "$device.displayName button $button was pushed.", isStateChange: true)
+
 	updateRoomStatusMsg()
 }
 
@@ -1377,6 +1478,7 @@ def updateTimer(timer = 0)		{
 	if (timer == -1)	timer = state.timer;
 	else				state.timer = timer;
 	sendEvent(name: "timer", value: (timer ?: '--'), isStateChange: true, displayed: false)
+	sendEvent(name: "countdown", value: timer, descriptionText: "countdown timer: $timer", isStateChange: true, displayed: true)
 }
 
 /*
@@ -1438,4 +1540,4 @@ private formatduration(long value, boolean friendly = false, granularity = 's', 
 }
 */
 
-private ifDebug(msg = null, level = null)     {  if (msg && (isDebug() || level))  log."${level ?: 'debug'}" msg  }
+private ifDebug(msg = null, level = null)     {  if (msg && (isDebug() || level))  log."${level ?: 'debug'}" "rooms occupancy: " + msg  }
