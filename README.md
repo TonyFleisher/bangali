@@ -1,10 +1,9 @@
 # bangali's rooms automation
 
-```html
 <img src="https://cdn.rawgit.com/adey/bangali/master/resources/icons/roomOccupancySettings.png" width="175" style="float:left; width:110px; height:80px; padding-right: 30px;">
-<h2 style="padding-top: 27px">Rooms Manager with Rooms Occupancy for Smartthings and Hubitat</h2>
+<h2 style="padding-top: 27px">Rooms Manager: Smarter Rooms: Personalized automation with Occupancy for Smartthings and Hubitat</h2>
 
-<p style="padding-top: 35px">While ST has a concept of rooms it is essentially a grouping mechanism which does not enable automation. In contrast rooms occupancy considers the room as a meta device and automates common tasks associated with a “room” physical or virtual. <strong>What makes it really useful is not just the room's occupancy state but the ability to manage automation for rooms in a set of rules for the room based on the occupancy state of the room and data from various sensors.</strong> When creating a room device through the smartapp you are able to create these rules for the rooms making your rooms really smart.</p>
+<p style="padding-top: 35px">While ST has a concept of rooms it is essentially a grouping mechanism which does not enable personalized automation. In contrast rooms occupancy considers the room as a meta device and automates common tasks associated with a “room” physical or virtual. <strong>What makes it really useful is not just the room's occupancy state but the ability to manage automation for rooms in a set of rules for the room based on the occupancy state of the room and data from various sensors.</strong> When creating a room device through the smartapp you are able to create these rules for the rooms making your rooms really smart.</p>
 
 <p><i>You can continue reading here for the summarized version or read the more detailed and always the latest version on Github which also describes the individual settings:</i></p>
 <p><a href="https://github.com/adey/bangali/blob/master/README.md">Rooms Manager and Rooms Occupancy readme on Github</a></p>
@@ -429,6 +428,10 @@
             <td>When true turn off switches when room occupancy changes to Locked</td>
         </tr>
         <tr>
+            <td>Override</td>
+            <td>When true allows use of devices in Locked state that would otherwise cause another room state to be activated.</td>
+        </tr>
+        <tr>
             <td>Timeout</td>
             <td>Option to turn off Locked state after certain number of hours</td>
         </tr>
@@ -438,7 +441,7 @@
 <p>&nbsp;</p>
 <b>These group of settings allow for light routine settings used in the rules.</b>
 <ul>
-    <img src="https://cdn.rawgit.com/adey/bangali/master/resources/icons/roomsLightLevel.png" width="125" style="float:left; width:80px; height:50px; padding-right: 30px;">
+    <img src="https://cdn.rawgit.com/adey/bangali/master/resources/icons/roomsLightLevel2.png" width="125" style="float:left; width:80px; height:50px; padding-right: 30px;">
     <h5>Auto Level 'AL' Settings</h5>
     <p>Settings to specify auto level and color temperature settings for the room which allows using 'AL' as a light level rule to automatically calculate and use these values based on time of day, wake and sleep time specified. Also allows specifying hours before and after wake and sleep times the light level and color temperature should be dimmed for optimal light levels.</p>
     <table class="wikitable" style="width:900px">
@@ -526,7 +529,7 @@
         </tr>
     </table>
     <p>&nbsp;</p>
-    <img src="https://cdn.rawgit.com/adey/bangali/master/resources/icons/roomsHolidayLights2.png" width="125" style="float:left; width:80px; height:50px; padding-right: 30px;">
+    <img src="https://cdn.rawgit.com/adey/bangali/master/resources/icons/roomsHolidayLights3.png" width="125" style="float:left; width:80px; height:50px; padding-right: 30px;">
     <h5>Holiday Lights 'HL' Settings</h5>
     <p>Settings to specify holiday light patterns for use in rules during various holiday seasons. Allows for rotating colors through or slow twinkling any set of lights specified in the rules.</p>
     <ul>
@@ -646,6 +649,10 @@
             <tr>
                 <td>Outdoor temperature</td>
                 <td>Outdoor temperature sensor that is not currently used but have plans to use</td>
+            </tr>
+            <tr>
+                <td>Adjust temperature</td>
+                <td>Adjust cooling and heating temperature by 0.5ªF when outside temperature is respectively over 90ªF and below 32ªF</td>
             </tr>
             <tr>
                 <td>Fan switch</td>
@@ -999,9 +1006,12 @@
 
 <h5>When creating a room first give the room a name and save the room then go back in to the room to add various settings to the room. This is because the app uses app state to manage the rules and in ST the app state is not consistent till the app has been saved once.</h5>
 
-<p>Like the app? Like this post please. 😁</p>
+<h4><i>Like the rooms app and want to contribute? Here are some options:</i></h4>
 
-<p>If you want to support development of the app here is the donation link. To be clear ... <i>no donation is required or expected to use rooms manager / occupancy.</i> But if you do donate please also know that it is much appreciated and thank you. Donate here: https://www.paypal.me/dey</p>
+* Like this post to help other users find this app
+* Submit a feature request on this thread or by creating an issue on Github
+* Submit a bug for something that is not working quite right here or on Github
+* Donate to support development of the app: [donate here.](https://www.paypal.me/dey)
 
 <p>&nbsp;</p>
 
