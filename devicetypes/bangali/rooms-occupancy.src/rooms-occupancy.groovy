@@ -16,19 +16,86 @@
 *  You should have received a copy of the GNU General Public License along with this program.
 *  If not, see <http://www.gnu.org/licenses/>.
 *
-*  Attribution:
-*	formatDuration(...) code by ady624 for webCoRE. adpated by me to work here. original code can be found at:
-*		https://github.com/ady624/webCoRE/blob/master/smartapps/ady624/webcore-piston.src/webcore-piston.groovy
-*
 *  Name: Rooms Occupancy
 *  Source: https://github.com/adey/bangali/blob/master/devicetypes/bangali/rooms-occupancy.src/rooms-occupancy.groovy
 *
 ***********************************************************************************************************************/
 
-public static String version()      {  return "v0.60.0"  }
-private static boolean isDebug()    {  return true  }
+public static String version()      {  return "v0.80.0"  }
+private static boolean isDebug()    {  return false  }
 
 /***********************************************************************************************************************
+*
+*  Version: 0.80.0
+*
+*   DONE:   8/07/2018
+*	1) turned off logging by defaults for both the apps and the driver.
+*   2) added option in the child app to turn on debug selectively for individual instances of rooms.
+*   3) changed recurring processing of child switches on hubitat to every 5 mins which is now same as smartthingd.
+*   4) removed pauses from child switch processing which cut down the processing time by 25% - 75%.
+*   5) added a driver for hubitat which is a copy of the smartthings DTH with only the parts supported by hubitat.
+*   6) removed all calls to update tiles in hubitat.
+*   7) removed tiles and event publishing from the driver in hubitat.
+*   8) changed how adjacent rooms processing on smartthings is handled on save to avoud timeouts. not an issue on hubitat.
+*   9) added ALPHA version of humidity settings and rules.
+*   10) added delayed off for room vents.
+*   11) small fixes here and there.
+*
+*  Version: 0.72.5
+*
+*   DONE:   8/30/2018
+*	1) added humidity indicator to device occupancy DTH.
+*	2) moved couple more room devices input settings to room devices page.
+*	3) changed humidity from integer to decimal. humidity rules coming in next version.
+*	4) coded and commented room restore settings since HE does not support updating settings input by user.
+*	5) all room devices with multiple devices now use average values for illuminance, temperature etc.
+*	6) changed some formatting for rooms manager settings on HE.
+*	7) added support for critical device connectivity failure notification with SMS.
+*	8) process temperature changes at a minimum interval of 30 seconds.
+*   9) fixed a bug where new rooms were not being updated when using adjacent rooms.
+*	10) cleaned up a bug here and there and optimized
+*
+*  Version: 0.70.2
+*
+*   DONE:   8/26/2018
+*	1) small fixes.
+*
+*  Version: 0.70.1
+*
+*   DONE:   8/25/2018
+*	1) fixed mode filtering in rooms manager announcements.
+*	2) added 5 and 10 seconds option to dim over settings in rooms child.
+*   3) added repeat option to github updated message.
+*
+*  Version: 0.70.0
+*
+*   DONE:   8/18/2018
+*	1) removed the `lock` capability which i had included for use on HE since HE does not support 'lock only' capability.
+*	2) fixed send event for switch and button in rooms occupany device.
+*	3) added support for multiple button devices in room button device.
+*	4) added dimming lights to off over configurable number of seconds.
+*   5) added sms settings with time window for when sms should be sent.
+*	6) added selectable time for github update sms notification.
+*   7) added sms support for low battery notification.
+*   8) renamed device health check to device connectivity check so folks dont confuse it with ST device health check.
+*	9) added option to not speak sunrise and sunset announcement and only do color notification.
+*	10) added option in battery check to add battery devices that are not otherwise used in rooms to battery check.
+*	11) on HE added support for notify my echo for spoken messages from the room but not rooms manager yet.
+*
+*  Version: 0.65.0
+*
+*   DONE:   8/13/2018
+*	1) fixed temperature colors on DTH for ST
+*	2) added option to select which room motion sensors triggers occupancy from VACANT state.
+*	3) added option to trigger busy check with repeated motion to the existing checks for state change trigger.
+*	4) added option to override OCCUPIED state trigger devices when in ENGAGED state.
+*	5) on HE added support for deleting rules.
+*	6) added option to override OCCUPIED and ENGAGED state trigger devices when in ASLEEP state.
+*	7) added option to override OCCUPIED, ENGAGED and ASLEEP state trigger devices when in LOCKED state.
+*	8) fixed a bug on power time type selection when limiting power trigger during certain hours.
+*	9) on HE started work on save and restore settings. currently only allows viewing settings to save.
+*	10) fixed bug for only on state change where mode and lux change would still trigger rules evaluation.
+*	11) added github update notification via sms.
 *
 *  Version: 0.60.0
 *
@@ -107,7 +174,6 @@ private static boolean isDebug()    {  return true  }
 *   1) cleaned up the settings page for rooms manager.
 *   2) updated rooms device settings to deal with ST change of json parser which broke settings.
 *   3) for rooms device events added a little more descriptive text.
-// TODO make time range display actual time range not just the time type.
 *   4) overhauled the view all settings page which had fallen behind.
 *   5) added link to help text on github in app.
 *   6) added setting for how fast room changes to VACANT if currently ASLEEP and room contact sensor is left open.
@@ -648,11 +714,10 @@ metadata {
 		capability "Sensor"
 		capability "Switch"
 		capability "Beacon"
-// for hubitat comment the next line and uncomment the one after that is currently commented
+// for hubitat comment the next line since this capability is not supported
 		capability "Lock Only"
-//		capability "Lock"		// hubitat does not support `Lock Only` 2018-04-07
 		attribute "occupancy", "enum", ['occupied', 'checking', 'vacant', 'locked', 'reserved', 'kaput', 'donotdisturb', 'asleep', 'engaged']
-// for hubitat uncomment the next few lines
+// for hubitat uncomment the next few lines ONLY if you want to use the icons on dashboard
 //		attribute "occupancyIconS", "String"
 //		attribute "occupancyIconM", "String"
 //		attribute "occupancyIconL", "String"
@@ -702,6 +767,10 @@ metadata {
 		}
 	}
 
+	//
+	// REMOVE THE FOLLOWING FOR HUBITAT		<<<<<
+	//
+
 	tiles(scale: 2)		{
 // old style display
 /*    	multiAttributeTile(name: "occupancy", width: 2, height: 2, canChangeBackground: true)		{
@@ -738,16 +807,12 @@ metadata {
 		valueTile("status", "device.status", inactiveLabel: false, width: 4, height: 1, decoration: "flat", wordWrap: false)	{
 			state "status", label:'${currentValue}', backgroundColor:"#ffffff", defaultState: false
 		}
-//		valueTile("statusFiller", "device.statusFiller", inactiveLabel: false, width: 1, height: 1, decoration: "flat", wordWrap: false)	{
-//			state "statusFiller", label:'${currentValue}', backgroundColor:"#ffffff", defaultState: false
-//		}
 		valueTile("timer", "device.timer", inactiveLabel: false, width: 1, height: 1, decoration: "flat")	{
 			state "timer", label:'${currentValue}', action: "turnOnAndOffSwitches", backgroundColor:"#ffffff"
 		}
 		valueTile("timeInd", "device.timeInd", width: 1, height: 1, canChangeIcon: true, decoration: "flat")	{
 			state("timeFT", label:'${currentValue}', backgroundColor:"#ffffff")
 		}
-//
 		standardTile("motionInd", "device.motionInd", width: 1, height: 1, canChangeIcon: true) {
 			state("inactive", label:'${name}', icon:"st.motion.motion.inactive", backgroundColor:"#ffffff")
 			state("active", label:'${name}', icon:"st.motion.motion.active", backgroundColor:"#00A0DC")
@@ -755,6 +820,9 @@ metadata {
 		}
 		valueTile("luxInd", "device.luxInd", width: 1, height: 1, canChangeIcon: true, decoration: "flat")	{
 			state("lux", label:'${currentValue}', backgroundColor:"#ffffff")
+		}
+		valueTile("humidityInd", "device.humidityInd", width: 1, height: 1, canChangeIcon: true, decoration: "flat")	{
+			state("humidity", label:'${currentValue}', backgroundColor:"#ffffff")
 		}
 		standardTile("contactInd", "device.contactInd", width: 1, height: 1, canChangeIcon: true) {
 			state("closed", label:'${name}', icon:"st.contact.contact.closed", backgroundColor:"#00A0DC")
@@ -808,7 +876,7 @@ metadata {
                 														[value: 97, color: "#BC2323"]])
 		}
 		valueTile("maintainInd", "device.maintainInd", width: 1, height: 1, canChangeIcon: true, decoration: "flat")	{
-			state("temperature", label:'${currentValue}', backgroundColor:"#ffffff")
+			state("temperature", label:'${currentValue}', unit:'', backgroundColors: [
 /*                														// Celsius Color Range
                 														[[value:  0, color: "#153591"],
                 														[value:  7, color: "#1E9CBB"],
@@ -816,15 +884,15 @@ metadata {
                 														[value: 23, color: "#44B621"],
                 														[value: 29, color: "#F1D801"],
                 														[value: 33, color: "#D04E00"],
-                														[value: 36, color: "#BC2323"],
+                														[value: 36, color: "#BC2323"],*/
                 														// Fahrenheit Color Range
-                														[[value: 32, color: "#153591"],
+                														[value: 32, color: "#153591"],
                 														[value: 45, color: "#1E9CBB"],
                 														[value: 59, color: "#90D2A7"],
                 														[value: 73, color: "#44B621"],
                 														[value: 84, color: "#F1D801"],
                 														[value: 91, color: "#D04E00"],
-                														[value: 97, color: "#BC2323"]])*/
+                														[value: 97, color: "#BC2323"]])
 		}
 		valueTile("outTempInd", "device.outTempInd", width: 1, height: 1, canChangeIcon: true, decoration: "flat")	{
 			state("temperature", label:'${currentValue}', unit:'', backgroundColors: [
@@ -846,9 +914,9 @@ metadata {
                 														[value: 97, color: "#BC2323"]])
 		}
 		standardTile("ventInd", "device.ventInd", width: 1, height: 1, canChangeIcon: true) {
-			state("none", label:'${name}', icon:"st.vents.vent", backgroundColor:"#ffffff")
+			state("none", label:'none', icon:"st.vents.vent", backgroundColor:"#ffffff")
+			state("closed", label:'closed', icon:"st.vents.vent-closed", backgroundColor:"#00A0DC")
 			state("open", label:'${currentValue}', icon:"st.vents.vent-open", backgroundColor:"#e86d13")
-			state("closed", label:'${name}', icon:"st.vents.vent-closed", backgroundColor:"#00A0DC")
 		}
 		standardTile("thermostatInd", "device.thermostatInd", width:1, height:1, canChangeIcon: true)	{
 			state("none", label:'${currentValue}', backgroundColor:"#ffffff")
@@ -941,15 +1009,11 @@ metadata {
 		valueTile("aWattsInd", "device.aWattsInd", width: 1, height: 1, canChangeIcon: true, decoration: "flat")	{
 			state("aWatts", label:'${currentValue}', backgroundColor:"#ffffff")
 		}
-//		valueTile("aRoomInd", "device.aRoomInd", width: 1, height: 1, canChangeIcon: true, decoration: "flat", wordWrap: true)	{
-//			state("rooms", label:'${currentValue}', backgroundColor:"#ffffff")
-//		}
 		standardTile("aMotionInd", "device.aMotionInd", width: 1, height: 1, canChangeIcon: true) {
 			state("none", label:'${name}', icon:"st.motion.motion.inactive", backgroundColor:"#ffffff")
 			state("inactive", label:'${name}', icon:"st.motion.motion.inactive", backgroundColor:"#ffffff")
 			state("active", label:'${name}', icon:"st.motion.motion.active", backgroundColor:"#00A0DC")
 		}
-
 		valueTile("deviceList1", "device.deviceList1", inactiveLabel: false, width: 3, height: 1, decoration: "flat", wordWrap: true) {
 			state "deviceList1", label:'${currentValue}', backgroundColor:"#ffffff"
 		}
@@ -986,7 +1050,6 @@ metadata {
 		valueTile("deviceList12", "device.deviceList12", inactiveLabel: false, width: 3, height: 1, decoration: "flat", wordWrap: true) {
 			state "deviceList12", label:'${currentValue}', backgroundColor:"#ffffff"
 		}
-
 		standardTile("engaged", "device.engaged", width: 2, height: 2, canChangeIcon: true) {
 			state "engaged", label:"Engaged", icon: "st.locks.lock.unlocked", action: "engaged", backgroundColor:"#ffffff", nextState:"toEngaged"
 			state "toEngaged", label:"Updating", icon: "st.locks.lock.unlocked", backgroundColor:"#ff6666"
@@ -995,10 +1058,6 @@ metadata {
 			state "vacant", label:"Vacant", icon: "st.Home.home18", action: "vacant", backgroundColor:"#ffffff", nextState:"toVacant"
 			state "toVacant", label:"Updating", icon: "st.Home.home18", backgroundColor:"#32b399"
 		}
-/*		standardTile("checking", "device.checking", width: 2, height: 2, canChangeIcon: true) {
-			state "checking", label:"Checking", icon: "st.Health & Wellness.health9", action: "checking", backgroundColor:"#ffffff", nextState:"toChecking"
-			state "toChecking", label:"Updating", icon: "st.Health & Wellness.health9", backgroundColor:"#616969"
-		}*/
 		standardTile("occupied", "device.occupied", width: 2, height: 2, canChangeIcon: true) {
 			state "occupied", label:"Occupied", icon: "st.Health & Wellness.health12", action: "occupied", backgroundColor:"#ffffff", nextState:"toOccupied"
             state "toOccupied", label:"Updating", icon:"st.Health & Wellness.health12", backgroundColor:"#90af89"
@@ -1023,7 +1082,6 @@ metadata {
 			state "kaput", label:"Kaput", icon: "st.Outdoor.outdoor18", action: "kaput", backgroundColor:"#ffffff", nextState:"toKaput"
 			state "toKaput", label:"Updating", icon: "st.Outdoor.outdoor18", backgroundColor:"#95623d"
 		}
-
 		valueTile("blankL", "device.blankL", width: 1, height: 1, decoration: "flat")					{ state "blankL", label:'\n' }
 		valueTile("timerL", "device.timerL", width: 1, height: 1, decoration: "flat")					{ state "timerL", label:'timer' }
 		valueTile("roomMotionL", "device.roomMotionL", width: 1, height: 1, decoration: "flat")			{ state "roomMotionL", label:'room\nmotion' }
@@ -1056,11 +1114,12 @@ metadata {
 		valueTile("temperatureL", "device.temperatureL", width: 1, height: 1, decoration: "flat")		{ state "temperatureL", label:'room\ntemp' }
 		valueTile("thermostatL", "device.thermostatL", width: 1, height: 1, decoration: "flat")			{ state "thermostatL", label:'heat /\ncool' }
 		valueTile("maintainL", "device.maintainL", width: 1, height: 1, decoration: "flat")				{ state "maintainL", label:'maintain\ntemp' }
-		valueTile("outTempL", "device.outTempeL", width: 1, height: 1, decoration: "flat")				{ state "temperatureL", label:'outside\ntemp' }
-		valueTile("ventL", "device.ventL", width: 1, height: 1, decoration: "flat")			{ state "thermostatL", label:'vent\nlevel' }
+		valueTile("outTempL", "device.outTempeL", width: 1, height: 1, decoration: "flat")				{ state "outTempL", label:'outside\ntemp' }
+		valueTile("ventL", "device.ventL", width: 1, height: 1, decoration: "flat")						{ state "ventL", label:'vent\nlevel' }
 		valueTile("fanL", "device.fanL", width: 1, height: 1, decoration: "flat")						{ state "fanL", label:'fan\nspeed' }
 		valueTile("roomWindowsL", "device.roomWindowsL", width: 1, height: 1, decoration: "flat")		{ state "roomWindowsL", label:'room\nwindow' }
 		valueTile("thermoOverrideL", "device.thermoOverrideL", width: 1, height: 1, decoration: "flat")	{ state "thermoOverrideL", label:'thermo\noverride' }
+		valueTile("humidityL", "device.humidityL", width: 1, height: 1, decoration: "flat")				{ state "humidityL", label:'humidity' }
 		valueTile("reservedL", "device.reservedL", width: 2, height: 1, decoration: "flat")				{ state "reservedL", label:'reserved' }
 		valueTile("rulesL", "device.rulesL", width: 1, height: 1, decoration: "flat")					{ state "rulesL", label:'# of\nrules' }
 		valueTile("lastRuleL", "device.lastRuleL", width: 1, height: 1, decoration: "flat")				{ state "lastRuleL", label:'last\nrules' }
@@ -1083,7 +1142,7 @@ metadata {
 					"powerL", "powerInd", "eWattsL", "eWattsInd", "aWattsL", "aWattsInd",
 					"temperatureL", "temperatureInd", "thermostatL", "thermostatInd", "maintainL", "maintainInd",
 					"outTempL", "outTempInd", "ventL", "ventInd", "fanL", "fanInd",
-					"roomWindowsL", "contactRTInd", "thermoOverrideL", "thermoOverrideInd", "reservedL",
+					"roomWindowsL", "contactRTInd", "thermoOverrideL", "thermoOverrideInd", "humidityL", "humidityInd",
 					"rulesL", "rulesInd", "lastRuleL", "lastRuleInd", "adjRoomsL", "aRoomInd"])
 
 //		details (["occupancy", "engaged", "vacant", "status", "timer", "timeInd", "motionInd", "luxInd", "contactInd", "presenceInd", "switchInd", "musicInd", "occupied", "asleep", "powerInd", "pauseInd", "temperatureInd", "maintinInd", "donotdisturb", "locked", "kaput"])
@@ -1096,11 +1155,12 @@ metadata {
 		// details (["occupancy", "engaged", "vacant", "status"])
 
 	}
+
+	// REMOVE TILL HERE FOR HUBITAT		<<<<<
+
 }
 
 def parse(String description)	{  ifDebug("parse: $description")  }
-
-// def installed()		{  initialize();	vacant()  }
 
 def installed()		{  initialize()  }
 
@@ -1162,19 +1222,29 @@ def on()	{
 		case 'asleep':		asleep();		break
 		default:							break
 	}
+	sendEvent(name: "switch", value: "on", descriptionText: "$device.displayName is on", isStateChange: true, displayed: true)
 }
 
-def	off()		{  vacant()  }
+def	off()		{
+	vacant()
+	sendEvent(name: "switch", value: "off", descriptionText: "$device.displayName is off", isStateChange: true, displayed: true)
+}
 
-def push(button)		{
-	ifDebug("$button")
-	switch(button)		{
+def push(buton)		{
+	ifDebug("$buton")
+	def hT = getHubType()
+	switch(buton)		{
 		case 1:		occupied();		break
 		case 3:		vacant();		break
 		case 4:		locked();		break
 		case 8:		asleep();		break
 		case 9:		engaged();		break
-		default:					break
+		default:
+			if (hT != _Hubitat)
+				sendEvent(name: "button", value: "pushed", data: [buttonNumber: "$buton"], descriptionText: "$device.displayName button $buton was pushed", isStateChange: true, displayed: true)
+			else
+				sendEvent(name: "pushableButton", value: buton, descriptionText: "$device.displayName button $buton was pushed", isStateChange: true, displayed: true)
+			break
 	}
 }
 
@@ -1214,7 +1284,7 @@ private	stateUpdate(newState)		{
 	resetTile(newState)
 }
 
-private updateOccupancy(occupancy = null) 	{
+def updateOccupancy(occupancy = null) 	{
 	occupancy = occupancy?.toLowerCase()
 	def hT = getHubType()
 	def buttonMap = ['occupied':1, 'locked':4, 'vacant':3, 'reserved':5, 'checking':2, 'kaput':6, 'donotdisturb':7, 'asleep':8, 'engaged':9]
@@ -1300,6 +1370,54 @@ def generateEvent(newState = null)		{
 	if (newState)		stateUpdate(newState);
 }
 
+def turnSwitchesAllOn()		{
+	if (parent)		{
+		parent.turnSwitchesAllOnOrOff(true)
+        updateSwitchInd(1)
+	}
+}
+
+def turnSwitchesAllOff()		{
+	if (parent)		{
+		parent.turnSwitchesAllOnOrOff(false)
+		updateSwitchInd(0)
+	}
+}
+
+def turnNightSwitchesAllOn()	{
+ 	ifDebug("turnNightSwitchesAllOn")
+	if (parent)	{
+		parent.dimNightLights()
+		updateNSwitchInd(1)
+	}
+}
+
+def turnNightSwitchesAllOff()	{
+	ifDebug("turnNightSwitchesAllOff")
+	if (parent)		{
+		parent.nightSwitchesOff()
+		updateNSwitchInd(0)
+	}
+}
+
+def	turnOnAndOffSwitches()	{
+	updateTimer(-1)
+	if (parent)		parent.switchesOnOrOff();
+}
+
+def updateTimer(timer = 0)		{
+	if (timer == -1)	timer = state.timer;
+	else				state.timer = timer;
+	sendEvent(name: "timer", value: (timer ?: '--'), isStateChange: true, displayed: false)
+	sendEvent(name: "countdown", value: timer, descriptionText: "countdown timer: $timer", isStateChange: true, displayed: true)
+}
+
+private ifDebug(msg = null, level = null)     {  if (msg && (isDebug() || level == 'error'))  log."${level ?: 'debug'}" " $device.displayName device: " + msg  }
+
+//
+// REMOVE THE FOLLOWING FOR HUBITAT		<<<<<
+//
+
 def updateMotionInd(motionOn)		{
 	def vV = 'none'
 	def dD = "indicate no motion sensor"
@@ -1314,6 +1432,9 @@ def updateLuxInd(lux)		{
 	sendEvent(name: 'luxInd', value: (lux == -1 ? '--' : (lux <= 100 ? lux : formatNumber(lux))), descriptionText: (lux == -1 ? "indicate no lux sensor" : "indicate lux value"), isStateChange: true, displayed: false)
 }
 
+def updateHumidityInd(humidity)		{
+	sendEvent(name: 'humidityInd', value: (humidity == -1 ? '--' : humidity.toString() + '%'), descriptionText: (humidity == -1 ? "indicate no humidity sensor" : "indicate humidity value"), isStateChange: true, displayed: false)
+}
 def updateContactInd(contactClosed)		{
 	def vV = 'none'
 	def dD = "indicate no contact sensor"
@@ -1408,17 +1529,19 @@ def updateOutTempIndC(temp)		{
 }
 
 def updateVentIndC(vent)		{
+	ifDebug("updateVentIndC: $vent")
 	def vL, dD
 	switch(vent)	{
 		case -1:	vL = 'none';		dD = "indicate no vents";		break
 		case 0:		vL = 'closed';		dD = "indicate vents closed";	break
-		default:	vL = 'open';		dD = "indicate vent open";	break
+		default:	vL = 'open';		dD = "indicate vent open";		break
 	}
-	sendEvent(name: 'ventInd', value: (vL == 'open' ? formatNumber(vent) : vL), descriptionText: dD, isStateChange: true, displayed: false)
+//	sendEvent(name: 'ventInd', value: (vL == 'open' ? formatNumber(vent) : vL), descriptionText: dD, isStateChange: true, displayed: false)
+	sendEvent(name: 'ventInd', value: vL, descriptionText: dD, isStateChange: true, displayed: false)
 }
 
 def updateMaintainIndC(temp)		{
-	def tS = '°' + (location.temperatureScale ?: 'F')
+	def tS = (location.temperatureScale ?: 'F')
 	sendEvent(name: 'maintainInd', value: (temp == -1 ? '--' : temp + '°' + tS), unit: tS, descriptionText:
 				(temp == -1 ? "indicate no maintain temperature" : "indicate maintain temperature value"), isStateChange: true, displayed: false)
 }
@@ -1576,105 +1699,4 @@ private formatNumber(number)	{
 	return (n > 0 ? String.format("%,d", n) : '')
 }
 
-def turnSwitchesAllOn()		{
-	if (parent)		{
-		parent.turnSwitchesAllOnOrOff(true)
-        updateSwitchInd(1)
-	}
-}
-
-def turnSwitchesAllOff()		{
-	if (parent)		{
-		parent.turnSwitchesAllOnOrOff(false)
-		updateSwitchInd(0)
-	}
-}
-
-def turnNightSwitchesAllOn()	{
- 	ifDebug("turnNightSwitchesAllOn")
-	if (parent)	{
-		parent.dimNightLights()
-		updateNSwitchInd(1)
-	}
-}
-
-def turnNightSwitchesAllOff()	{
-	ifDebug("turnNightSwitchesAllOff")
-	if (parent)		{
-		parent.nightSwitchesOff()
-		updateNSwitchInd(0)
-	}
-}
-
-def	turnOnAndOffSwitches()	{
-	updateTimer(-1)
-	if (parent)		parent.switchesOnOrOff();
-}
-
-def updateTimer(timer = 0)		{
-	if (timer == -1)	timer = state.timer;
-	else				state.timer = timer;
-	sendEvent(name: "timer", value: (timer ?: '--'), isStateChange: true, displayed: false)
-	sendEvent(name: "countdown", value: timer, descriptionText: "countdown timer: $timer", isStateChange: true, displayed: true)
-}
-
-/*
-not using yet but have plans to ...
-
-private formatduration(long value, boolean friendly = false, granularity = 's', boolean showAdverbs = false)		{
-	int sign = (value >= 0) ? 1 : -1
-    if (sign < 0) value = -value
-	int ms = value % 1000
-    value = Math.floor((value - ms) / 1000)
-	int s = value % 60
-    value = Math.floor((value - s) / 60)
-	int m = value % 60
-    value = Math.floor((value - m) / 60)
-	int h = value % 24
-    value = Math.floor((value - h) / 24)
-	int d = value
-
-    def parts = 0
-    def partName = ''
-    switch (granularity) {
-    	case 'd': parts = 1; partName = 'day'; break;
-    	case 'h': parts = 2; partName = 'hour'; break;
-    	case 'm': parts = 3; partName = 'minute'; break;
-    	case 'ms': parts = 5; partName = 'millisecond'; break;
-    	default: parts = 4; partName = 'second'; break;
-    }
-
-    parts = friendly ? parts : (parts < 3 ? 3 : parts)
-    def result = ''
-    if (friendly) {
-    	List p = []
-        if (d) p.push("$d day" + (d > 1 ? 's' : ''))
-        if ((parts > 1) && h) p.push("$h hour" + (h > 1 ? 's' : ''))
-        if ((parts > 2) && m) p.push("$m minute" + (m > 1 ? 's' : ''))
-        if ((parts > 3) && s) p.push("$s second" + (s > 1 ? 's' : ''))
-        if ((parts > 4) && ms) p.push("$ms millisecond" + (ms > 1 ? 's' : ''))
-        switch (p.size()) {
-        	case 0:
-            	result = showAdverbs ? 'now' : '0 ' + partName + 's'
-                break
-            case 1:
-            	result = p[0]
-                break
-			default:
-            	result = '';
-                int sz = p.size()
-                for (int i=0; i < sz; i++) {
-                	result += (i ? (sz > 2 ? ', ' : ' ') : '') + (i == sz - 1 ? 'and ' : '') + p[i]
-                }
-                result = (showAdverbs && (sign > 0) ? 'in ' : '') + result + (showAdverbs && (sign < 0) ? ' ago' : '')
-            	break
-		}
-    }
-	else
-    	result = (sign < 0 ? '-' : '') + (d > 0 ? sprintf("%dd ", d) : '') + sprintf("%02d:%02d", h, m) + (parts > 3 ? sprintf(":%02d", s) : '') + (parts > 4 ? sprintf(".%03d", ms) : '')
-
-    return result
-}
-*/
-
-private ifDebug(msg = null, level = null)     {  if (msg && (isDebug() || level))  log."${level ?: 'debug'}" "$device.displayName device " + msg  }
+// REMOVE TILL HERE FOR HUBITAT		<<<<<

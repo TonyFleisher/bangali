@@ -64,6 +64,7 @@
     * Time every quarter, half or on the hour.
     * Sunrise and sunset.
   * Announcements support speakers and / or lights.
+  * Github updated notification.
 
 <h3 style="padding-top: 5px">Occupancy states, settings and other details:</h3>
 
@@ -132,6 +133,14 @@
         <tr>
             <td>Motion event</td>
             <td>Motion event to use for timeout. Choose the motion active event to start the timeout if your motion sensor does not generate a motion inactive event following the motion active event rather stays continuously active with no inactive event in between.</td>
+        </tr>
+        <tr>
+            <td>Room Buttons</td>
+            <td>Select up to 5 buttons all of which will allow toggling through selected states.</td>
+        </tr>
+        <tr>
+            <td>Selected states</td>
+            <td>Select states room buttons above will toggle through.</td>
         </tr>
         <tr>
             <td>Presence sensor(s)</td>
@@ -1125,7 +1134,11 @@
                 <td>Icon to use for this room in Rooms Manager.</td>
             </tr>
             <tr>
-                <td>Turn off</td>
+                <td>Dim lights off</td>
+                <td>When turning off lights this dims them to off over specified number of seconds instead of turning them off directly.</td>
+            </tr>
+            <tr>
+                <td>Turn all off</td>
                 <td>This turns off all switches when no rules match so you don't need to create a rule for Vacant state to turn off lights.</td>
             </tr>
             <tr>
@@ -1157,22 +1170,14 @@
 </ul>
 
 <p>&nbsp;</p>
-<p><i>For a github install from repo in ST use : owner: adey / name: bangali / branch: master. Install and publish the rooms occupancy DTH then install and publish the rooms manager and rooms child app smartapps.</i></p>
+<p><i>For a github install from repo in ST use : owner: adey / name: bangali / branch: master. Install and publish the rooms occupancy DTH then install and publish the rooms manager and rooms child app smartapps. <b>So 1 device driver and 2 smartapps ALL need to be saved and published before using the smartapp.</b></i></p>
 
 <p>For a manual install here are the links, in order of DTHs and smartapps you should save and publish.</p>
 
 <p><b>rooms occupancy DTH:</b></p>
 <a href="https://raw.githubusercontent.com/adey/bangali/master/devicetypes/bangali/rooms-occupancy.src/rooms-occupancy.groovy">https://raw.githubusercontent.com/adey/bangali/master/devicetypes/bangali/rooms-occupancy.src/rooms-occupancy.groovy</a>
 
-<h5>when saving the driver it will generate an error on the first of each of these two lines:</h5>
-
-<p>capability "Button"</p>
-<p>//capability "PushableButton" // hubitat changed Button to PushableButton 2018-04-20</p>
-
-<p>capability "Lock Only"</p>
-<p>//capability "Lock" // hubitat does not support Lock Only 2018-04-07</p>
-
-<i>Comment out the Button and Lock Only line and uncomment the PushableButton and Lock line, explanation in inline comment above.</i>
+<h5>When saving the driver in Hubitat please see the comments in the capabilities section where you will need to comment a few lines and uncomment a few others. This is not necessary to do on SmartThings.</h5>
 
 <p><b>rooms manager smartapp:</b></p>
 <a href="https://raw.githubusercontent.com/adey/bangali/master/smartapps/bangali/rooms-manager.src/rooms-manager.groovy">https://raw.githubusercontent.com/adey/bangali/master/smartapps/bangali/rooms-manager.src/rooms-manager.groovy</a>
@@ -1275,7 +1280,7 @@
                 </tr>
             </table>
         </ul>
-        When the rules date condition is met on and switches specified in the rule will be turned on and off respectively.
+        When the rules date condition is met, switches specified in the rule will be turned on and off respectively.
     </ul>
 </p>
 
