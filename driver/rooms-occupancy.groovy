@@ -1,6 +1,6 @@
 /***********************************************************************************************************************
 *
-*  A Hubitat driver to allow handling rooms as devices which have states for occupancy.
+*  A SmartThings device handler to allow handling rooms as devices which have states for occupancy.
 *
 *  Copyright (C) 2017 bangali
 *
@@ -17,28 +17,27 @@
 *  If not, see <http://www.gnu.org/licenses/>.
 *
 *  Name: Rooms Occupancy
-*  Source: https://github.com/adey/bangali/blob/master/driver/rooms-occupancy.groovy
+*  Source: https://github.com/adey/bangali/blob/master/devicetypes/bangali/rooms-occupancy.src/rooms-occupancy.groovy
 *
 ***********************************************************************************************************************/
 
-public static String version()      {  return "v0.80.0"  }
-private static boolean isDebug()    {  return false  }
+public static String version()		{  return "v0.95.0"  }
+private static boolean isDebug()	{  return false  }
 
-import groovy.transform.Field
-
-@Field final String _SmartThings = 'ST'
-@Field final String _Hubitat     = 'HU'
+final String _SmartThings()	{ return 'ST' }
+final String _Hubitat()		{ return 'HU' }
 
 metadata {
 	definition (
-    	name: "rooms occupancy",
-        namespace: "bangali",
-        author: "bangali")		{
+		name: "rooms occupancy",
+		namespace: "bangali",
+		author: "bangali")		{
 		capability "Actuator"
 		capability "PushableButton"		// hubitat changed `Button` to `PushableButton`  2018-04-20
 		capability "Sensor"
 		capability "Switch"
 		capability "Beacon"
+		capability "Health Check"
 		attribute "occupancy", "enum", ['occupied', 'checking', 'vacant', 'locked', 'reserved', 'kaput', 'donotdisturb', 'asleep', 'engaged']
 // for hubitat uncomment the next few lines ONLY if you want to use the icons on dashboard
 //		attribute "occupancyIconS", "String"
@@ -54,9 +53,9 @@ metadata {
 		attribute "alarmSound", "String"
 		attribute "countdown", "String"
 		command "occupied"
-        command "checking"
+		command "checking"
 		command "vacant"
-        command "locked"
+		command "locked"
 		command "reserved"
 		command "kaput"
 		command "donotdisturb"
@@ -69,7 +68,6 @@ metadata {
 		command "turnNightSwitchesAllOn"
 		command "turnNightSwitchesAllOff"
 		command "alarmOffAction"
-		command "updateOccupancy", ["string"]
 	}
 
 	simulator	{
@@ -77,8 +75,8 @@ metadata {
 
 	preferences		{
 		section("Alarm settings:")		{
-			input "alarmDisabled", "bool", title: "Disable alarm?", required: true, multiple: false, defaultValue: true
-			input "alarmTime", "time", title: "Alarm Time?", required: false, multiple: false
+			input "alarmDisabled", "bool", title: "Disable alarm?", required: true, defaultValue: true
+			input "alarmTime", "time", title: "Alarm Time?", required: false
 			input "alarmVolume", "number", title: "Volume?", description: "0-100%", required: (alarmTime ? true : false), range: "1..100"
 			input "alarmSound", "enum", title:"Sound?", required: (alarmTime ? true : false), multiple: false, defaultValue: null,
 								options: ["0":"Bell 1", "1":"Bell 2", "2":"Dogs Barking", "3":"Fire Alarm", "4":"Piano", "5":"Lightsaber"]
@@ -98,42 +96,42 @@ def updated()		{  initialize()  }
 
 def	initialize()	{
 	unschedule()
-	state
 	sendEvent(name: "numberOfButtons", value: 9, descriptionText: "set number of buttons to 9.", isStateChange: true, displayed: true)
 	state.timer = 0
 	setupAlarmC()
 	sendEvent(name: "countdown", value: '0s', descriptionText: "countdown timer: 0s", isStateChange: true, displayed: true)
+	if (getHubType() == _SmartThings)		{
+		sendEvent(name: "DeviceWatch-DeviceStatus", value: "online")
+		sendEvent(name: "healthStatus", value: "online")
+		sendEvent(name: "DeviceWatch-Enroll", value: [protocol: "cloud", scheme:"untracked"].encodeAsJson(), displayed: false)
+	}
 }
 
-def getHubType()        {
-    if (!state.hubId)   state.hubId = location.hubs[0].id.toString()
-    if (state.hubId.length() > 5)   return _SmartThings;
-    else                            return _Hubitat;
+def getHubType()	{
+	if (!state.hubId)	state.hubId = location.hubs[0].id.toString()
+	return (state.hubId.length() > 5 ? _SmartThings() : _Hubitat())
 }
 
 def setupAlarmC()	{
 	if (parent)		parent.setupAlarmP(alarmDisabled, alarmTime, alarmVolume, alarmSound, alarmRepeat, alarmDayOfWeek);
-	if (alarmDayOfWeek != 'ADW0')      {
-        state.alarmDayOfWeek = []
-        switch(alarmDayOfWeek)       {
-            case 'ADW1':	state.alarmDayOfWeek << 'Mon';		break
+	if (alarmDayOfWeek != 'ADW0')	{
+		state.alarmDayOfWeek = []
+		switch(alarmDayOfWeek)	{
+			case 'ADW1':	state.alarmDayOfWeek << 'Mon';		break
 			case 'ADW2':	state.alarmDayOfWeek << 'Tue';		break
 			case 'ADW3':	state.alarmDayOfWeek << 'Wed';		break
 			case 'ADW4':	state.alarmDayOfWeek << 'Thu';		break
 			case 'ADW5':	state.alarmDayOfWeek << 'Fri';		break
 			case 'ADW6':	state.alarmDayOfWeek << 'Sat';		break
 			case 'ADW7':	state.alarmDayOfWeek << 'Sun';		break
-            case 'ADW8':   	['Mon','Tue','Wed','Thu','Fri'].each		{ state.alarmDayOfWeek << it };    break
-            case 'ADW9':   	['Sat','Sun'].each							{ state.alarmDayOfWeek << it };    break
-            default:  		state.alarmDayOfWeek = null;		break
-        }
-    }
-    else
-        state.alarmDayOfWeek = ''
-	if (alarmSound)
-		state.alarmSound = ["Bell 1", "Bell 2", "Dogs Barking", "Fire Alarm", "Piano", "Lightsaber"][alarmSound as Integer]
+			case 'ADW8':   	state.alarmDayOfWeek = state.alarmDayOfWeek + ['Mon','Tue','Wed','Thu','Fri'];	break
+			case 'ADW9':   	state.alarmDayOfWeek = state.alarmDayOfWeek + ['Sat','Sun'];					break
+			default:  		state.alarmDayOfWeek = null;		break
+		}
+	}
 	else
-		state.alarmSound = ''
+		state.alarmDayOfWeek = ''
+	state.alarmSound = (alarmSound ? ["Bell 1", "Bell 2", "Dogs Barking", "Fire Alarm", "Piano", "Lightsaber"][alarmSound as Integer] : '')
 	sendEvent(name: "alarmEnabled", value: ((alarmDisabled || !alarmTime) ? 'No' : 'Yes'), descriptionText: "alarm enabled is ${(!alarmDisabled)}", isStateChange: true, displayed: true)
 	sendEvent(name: "alarmTime", value: "${(alarmTime ? timeToday(alarmTime, location.timeZone).format("HH:mm", location.timeZone) : '')}", descriptionText: "alarm time is ${alarmTime}", isStateChange: true, displayed: true)
 	sendEvent(name: "alarmDayOfWeek", value: "$state.alarmDayOfWeek", descriptionText: "alarm days of week is $state.alarmDayOfWeek", isStateChange: true, displayed: true)
@@ -142,10 +140,8 @@ def setupAlarmC()	{
 }
 
 def on()	{
-	def toState = parent?.roomDeviceSwitchOnP()
-	toState = (toState ? toState as String : 'occupied')
-//	ifDebug("on: $toState")
-	switch(toState)		{
+	if (!state.onState)		state.onState = parent?.roomDeviceSwitchOnP().toString();
+	switch(state.onState ?: 'occupied')		{
 		case 'occupied':	occupied();		break
 		case 'engaged':		engaged();		break
 		case 'locked':		locked();		break
@@ -154,6 +150,8 @@ def on()	{
 	}
 	sendEvent(name: "switch", value: "on", descriptionText: "$device.displayName is on", isStateChange: true, displayed: true)
 }
+
+def setOnStateC(e)		{  state.onState = (e ? e.toString() : 'occupied')  }
 
 def	off()		{
 	vacant()
@@ -170,7 +168,7 @@ def push(buton)		{
 		case 8:		asleep();		break
 		case 9:		engaged();		break
 		default:
-			if (hT != _Hubitat)
+			if (hT != _Hubitat())
 				sendEvent(name: "button", value: "pushed", data: [buttonNumber: "$buton"], descriptionText: "$device.displayName button $buton was pushed", isStateChange: true, displayed: true)
 			else
 				sendEvent(name: "pushableButton", value: buton, descriptionText: "$device.displayName button $buton was pushed", isStateChange: true, displayed: true)
@@ -182,58 +180,57 @@ def lock()		{  locked() }
 
 def unlock()	{  vacant()  }
 
-def occupied()	{	stateUpdate('occupied')		}
+def occupied(handleSwitches = true)			{ runIn(0, stateUpdate, [data: [newState:'occupied', handleSwitches:handleSwitches]]) }
 
-def checking()	{	stateUpdate('checking')		}
+def checking(handleSwitches = true)			{ runIn(0, stateUpdate, [data: [newState:'checking', handleSwitches:handleSwitches]]) }
 
-def vacant()	{	stateUpdate('vacant')		}
+def vacant(handleSwitches = true)			{ runIn(0, stateUpdate, [data: [newState:'vacant', handleSwitches:handleSwitches]]) }
 
-def donotdisturb()	{	stateUpdate('donotdisturb')		}
+def donotdisturb(handleSwitches = true)		{ runIn(0, stateUpdate, [data: [newState:'donotdisturb', handleSwitches:handleSwitches]]) }
 
-def reserved()	{	stateUpdate('reserved')		}
+def reserved(handleSwitches = true)			{ runIn(0, stateUpdate, [data: [newState:'reserved', handleSwitches:handleSwitches]]) }
 
-def asleep()	{	stateUpdate('asleep')		}
+def asleep(handleSwitches = true)			{ runIn(0, stateUpdate, [data: [newState:'asleep', handleSwitches:handleSwitches]]) }
 
-def locked()	{	stateUpdate('locked')		}
+def locked(handleSwitches = true)			{ runIn(0, stateUpdate, [data: [newState:'locked', handleSwitches:handleSwitches]]) }
 
-def engaged()	{	stateUpdate('engaged')		}
+def engaged(handleSwitches = true)			{ runIn(0, stateUpdate, [data: [newState:'engaged', handleSwitches:handleSwitches]]) }
 
-def kaput()		{	stateUpdate('kaput')		}
+def kaput(handleSwitches = true)			{ runIn(0, stateUpdate, [data: [newState:'kaput', handleSwitches:handleSwitches]]) }
 
-private	stateUpdate(newState)		{
-//	def oldState = device.currentValue('occupancy')
-	def oldState = state.oldState
-	state.oldState = newState
-	if (oldState != newState)	{
-		updateOccupancy(newState)
-        if (parent)		{
-			parent.runInHandleSwitches(oldState, newState);
-//			runIn(0, parent.runInHandleSwitches, data: [oldState: oldState, newState: newState])
-		}
+def	stateUpdate(data)		{
+	if (!data)		return;
+	def newState = data.newState
+	def handleSwitches = data.handleSwitches
+	if (state.oldState != newState)		{
+        if (handleSwitches && parent)
+			setupTimer((int) (parent.handleSwitches(state.oldState, newState, true) ?: 0))
+		updateOccupancy(state.oldState, newState)
+		state.oldState = newState
 	}
 	resetTile(newState)
 }
 
-def updateOccupancy(occupancy = null) 	{
-	occupancy = occupancy?.toLowerCase()
+def updateOccupancy(oldOcc, newOcc) 	{
+	newOcc = newOcc?.toLowerCase()
 	def hT = getHubType()
 	def buttonMap = ['occupied':1, 'locked':4, 'vacant':3, 'reserved':5, 'checking':2, 'kaput':6, 'donotdisturb':7, 'asleep':8, 'engaged':9]
-	if (!occupancy || !(buttonMap.containsKey(occupancy))) {
-    	ifDebug("Missing or invalid parameter room occupancy: $occupancy")
-        return
-    }
-	sendEvent(name: "occupancy", value: occupancy, descriptionText: "$device.displayName changed to $occupancy", isStateChange: true, displayed: true)
-	if (hT == _Hubitat)		{
-		def img = "https://cdn.rawgit.com/adey/bangali/master/resources/icons/rooms${occupancy?.capitalize()}State.png"
-		sendEvent(name: "occupancyIconS", value: "<img src=$img height=25 width=25>", descriptionText: "$device.displayName $occupancy icon small", isStateChange: true, displayed: true)
-		sendEvent(name: "occupancyIconM", value: "<img src=$img height=50 width=50>", descriptionText: "$device.displayName $occupancy icon medium", isStateChange: true, displayed: true)
-		sendEvent(name: "occupancyIconL", value: "<img src=$img height=75 width=75>", descriptionText: "$device.displayName $occupancy icon large", isStateChange: true, displayed: true)
-		sendEvent(name: "occupancyIconXL", value: "<img src=$img height=100 width=100>", descriptionText: "$device.displayName $occupancy icon extra large", isStateChange: true, displayed: true)
-		sendEvent(name: "occupancyIconXXL", value: "<img src=$img height=150 width=150>", descriptionText: "$device.displayName $occupancy icon extra extra large", isStateChange: true, displayed: true)
-		sendEvent(name: "occupancyIconURL", value: img, descriptionText: "$device.displayName $occupancy icon URL", isStateChange: true, displayed: true)
+	if (!newOcc || !(buttonMap.containsKey(newOcc)))	{
+		ifDebug("Missing or invalid parameter room occupancy: $newOcc")
+		return
 	}
-    def button = buttonMap[occupancy]
-	if (hT == _SmartThings)
+	sendEvent(name: "occupancy", value: newOcc, descriptionText: "$device.displayName changed to $newOcc", isStateChange: true, displayed: true)
+	if (hT == _Hubitat())		{
+		def img = "https://cdn.rawgit.com/adey/bangali/master/resources/icons/rooms${newOcc?.capitalize()}State.png"
+		sendEvent(name: "occupancyIconS", value: "<img src=$img height=25 width=25>", descriptionText: "$device.displayName $newOcc icon small", isStateChange: true, displayed: true)
+		sendEvent(name: "occupancyIconM", value: "<img src=$img height=50 width=50>", descriptionText: "$device.displayName $newOcc icon medium", isStateChange: true, displayed: true)
+		sendEvent(name: "occupancyIconL", value: "<img src=$img height=75 width=75>", descriptionText: "$device.displayName $newOcc icon large", isStateChange: true, displayed: true)
+		sendEvent(name: "occupancyIconXL", value: "<img src=$img height=100 width=100>", descriptionText: "$device.displayName $newOcc icon extra large", isStateChange: true, displayed: true)
+		sendEvent(name: "occupancyIconXXL", value: "<img src=$img height=150 width=150>", descriptionText: "$device.displayName $newOcc icon extra extra large", isStateChange: true, displayed: true)
+		sendEvent(name: "occupancyIconURL", value: img, descriptionText: "$device.displayName $newOcc icon URL", isStateChange: true, displayed: true)
+	}
+	def button = buttonMap[newOcc]
+	if (hT == _SmartThings())
 		sendEvent(name: "button", value: "pushed", data: [buttonNumber: button], descriptionText: "$device.displayName button $button was pushed.", isStateChange: true)
 	else
 		sendEvent(name:"pushed", value:button, descriptionText: "$device.displayName button $button was pushed.", isStateChange: true)
@@ -249,8 +246,7 @@ def alarmOn()	{
 def alarmOff(endLoop = false)	{
 	if (device.currentValue('occupancy') == 'alarm' || endLoop)
 		sendEvent(name: "occupancy", value: "$state.oldState", descriptionText: "$device.displayName alarm is off", isStateChange: true, displayed: true)
-	if (endLoop)	unschedule();
-	else			runIn(1, alarmOn);
+	(endLoop ? unschedule() : runIn(1, alarmOn))
 }
 
 def alarmOffAction()	{
@@ -261,56 +257,27 @@ def alarmOffAction()	{
 }
 
 private updateRoomStatusMsg()		{
-//	sendEvent(name: "statusFiller", value: "Since:", isStateChange: true, displayed: false)
-	state.statusMsg = formatLocalTime()
+	def formatter = new java.text.SimpleDateFormat("EEE, MMM d yyyy @ h:mm:ss a z")
+	formatter.setTimeZone(location.timeZone)
+	state.statusMsg = formatter.format(now())
 	sendEvent(name: "status", value: state.statusMsg, isStateChange: true, displayed: false)
 }
 
-private formatLocalTime(time = now(), format = "EEE, MMM d yyyy @ h:mm:ss a z")		{
-	def formatter = new java.text.SimpleDateFormat(format)
-	formatter.setTimeZone(location.timeZone)
-	return formatter.format(time)
-}
-
-def deviceList(devicesMap)		{
-	def devicesTitle = ['busyCheck':'Busy Check', 'engagedButton':'Button', 'presence':'Presence Sensor', 'engagedSwitch':'Engaged Switch', 'contactSensor':'Contact Sensor',
-						'motionSensors':'Motion Sensor', 'switchesOn':'Switch ON', 'switchesOff':'Switch OFF', 'luxSensor':'Lux Sensor', 'adjRoomNames':'Adjacent Room',
-						'awayModes':'Away Mode', 'pauseModes':'Pause Mode', 'sleepSensor':'Sleep Sensor', 'nightButton':'Night Button', 'nightSwitches':'Night Switch']
-	def deviceCount = 12
-	def i = 1
-	devicesMap.each	{ k, v ->
-		if (v)			{
-			v.each	{
-				if (it && i <= deviceCount)		{
-					sendEvent(name: "deviceList" + i, value: (devicesTitle[k] + ":\n" + (it.hasProperty('displayName') ? it.displayName : it)), isStateChange: true, displayed: false)
-					i = i +1
-				}
-			}
-		}
-	}
-	for (; i <= deviceCount; i++)
-		sendEvent(name: "deviceList" + i, value: null, isStateChange: true, displayed: false)
-}
-
 private	resetTile(occupancy)	{
-    sendEvent(name: occupancy, value: occupancy, descriptionText: "$device.displayName reset tile $occupancy", isStateChange: true, displayed: false)
-}
-
-def generateEvent(newState = null)		{
-	if (newState)		stateUpdate(newState);
+	sendEvent(name: occupancy, value: occupancy, descriptionText: "$device.displayName reset tile $occupancy", isStateChange: true, displayed: false)
 }
 
 def turnSwitchesAllOn()		{
 	if (parent)		{
 		parent.turnSwitchesAllOnOrOff(true)
-        	if (getHubType() != _Hubitat)	updateSwitchInd(1);
+		if (getHubType() != _Hubitat())		updateSwitchInd(1);
 	}
 }
 
 def turnSwitchesAllOff()		{
 	if (parent)		{
 		parent.turnSwitchesAllOnOrOff(false)
-		if (getHubType() != _Hubitat)	updateSwitchInd(0);
+		if (getHubType() != _Hubitat())		updateSwitchInd(0);
 	}
 }
 
@@ -318,7 +285,7 @@ def turnNightSwitchesAllOn()	{
  	ifDebug("turnNightSwitchesAllOn")
 	if (parent)	{
 		parent.dimNightLights()
-		if (getHubType() != _Hubitat)	updateNSwitchInd(1);
+		if (getHubType() != _Hubitat())		updateNSwitchInd(1)
 	}
 }
 
@@ -326,20 +293,29 @@ def turnNightSwitchesAllOff()	{
 	ifDebug("turnNightSwitchesAllOff")
 	if (parent)		{
 		parent.nightSwitchesOff()
-		if (getHubType() != _Hubitat)	updateNSwitchInd(0);
+		if (getHubType() != _Hubitat())		updateNSwitchInd(0)
 	}
 }
 
 def	turnOnAndOffSwitches()	{
-	updateTimer(-1)
 	if (parent)		parent.switchesOnOrOff();
+	setupTimer(-1)
 }
 
-def updateTimer(timer = 0)		{
-	if (timer == -1)	timer = state.timer;
-	else				state.timer = timer;
-	sendEvent(name: "timer", value: (timer ?: '--'), isStateChange: true, displayed: false)
-	sendEvent(name: "countdown", value: timer, descriptionText: "countdown timer: $timer", isStateChange: true, displayed: true)
+def setupTimer(int timer)	{
+	if (timer != -1)	state.timerLeft = timer;
+	timerNext()
 }
 
-private ifDebug(msg = null, level = null)     {  if (msg && (isDebug() || level == 'error'))  log."${level ?: 'debug'}" " $device.displayName device: " + msg  }
+def timerNext()		{
+	int timerUpdate = (state.timerLeft > 60 ? 60 : (state.timerLeft < 5 ? state.timerLeft : 5))
+	def timerInd = (state.timerLeft > 3600 ? (state.timerLeft / 3600f).round(1) + 'h' : (state.timerLeft > 60 ? (state.timerLeft / 60f).round(1) + 'm' : state.timerLeft + 's')).replace(".0","")
+	if (getHubType() != _Hubitat())
+		sendEvent(name: "timer", value: (timerInd ?: '--'), isStateChange: true, displayed: false)
+	else
+		sendEvent(name: "countdown", value: timerInd, descriptionText: "countdown timer: $timerInd", isStateChange: true, displayed: true)
+	state.timerLeft = state.timerLeft - timerUpdate
+	(state.timerLeft > 0 ? runIn(timerUpdate, timerNext) : unschedule('timerNext'))
+}
+
+private ifDebug(msg = null, level = null)	{  if (msg && (isDebug() || level == 'error'))	log."${level ?: 'debug'}" " $device.displayName device: " + msg  }
