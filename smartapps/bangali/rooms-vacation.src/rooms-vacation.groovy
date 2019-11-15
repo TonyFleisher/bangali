@@ -25,7 +25,7 @@
 *
 ***********************************************************************************************************************/
 
-public static String version()		{  return "v0.96.0"  }
+public static String version()		{  return "v0.99.6"  }
 boolean isDebug()					{  return false  }
 
 definition	(
@@ -73,18 +73,28 @@ def installed()		{ initialize() }
 
 def updated()		{
 	def nowTime = now()
-	ifDebug("updated", 'info')
 	initialize()
 	def hT = getHubType()
+	def pVer = parent.version()
+	def ver = version()
+	if (pVer != ver)		{
+		ifDebug("Rooms Vacation app verion does not match Rooms Manager app version. Parent version is $pVer and this app version is ${ver}. Please update app code and save${(hT == _SmartThings ? '/publish' : '')} before trying again.", 'error')
+		return
+	}
+	ifDebug("updated", 'info')
 	if (hT == 'ST')		state.vacaDisabled = (vacaState ? false : true);
 	state.vacaRoomDevices = (vacaRooms ? parent.getRoomDevices(vacaRooms) : [:])
 	if (!state.vacaDisabled)	{
-		state.lastRun = now() - 1980000L
-		for (def vRD : state.vacaRoomDevices)
-			for (def i = 1; i <= 7; i++)
-				if (state.rSH[vRD.key]?."$i")		state.rSH[vRD.key]."$i" = state.rSH[vRD.key]."$i".sort{ it.key }
-		replayRecover()
-		runEvery30Minutes(replayRecover)
+		if (state.rSH)		{
+			state.lastRun = now() - 1980000L
+			for (def vRD : state.vacaRoomDevices)
+				for (def i = 1; i <= 7; i++)
+					if (state?.rSH[vRD.key]?."$i")		state.rSH[vRD.key]."$i" = state.rSH[vRD.key]."$i".sort{ it.key }
+			replayRecover()
+			runEvery30Minutes(replayRecover)
+		}
+		else
+			log.error "rooms manager: rooms state history not found. vacation mode will not replay."
 	}
 	parent.triggerSubscribeToVaca()
 log.debug "perf updated: ${now() - nowTime} ms"
@@ -94,7 +104,6 @@ def initialize()	{
 	ifDebug("initialize", 'info')
 	unsubscribe()
 	unschedule()
-	state.replayRandom = false
 }
 
 def subscribeToRooms()	{
@@ -145,7 +154,7 @@ log.debug "evt.value: $evt.value | evt.device.name: $evt.device.name"
 	def nowTime = now()
 	def dNI = evt.device.deviceNetworkId.toString()
 //	state.remove('rSH');
-	if (state.vacaRoomDevices.containsKey(dNI))		{
+	if (state.vacaRoomDevices?.containsKey(dNI))		{
 		def dow = getDoW().toString()
 		def nowDate = new Date(nowTime)
 		int hhMM = ((nowDate.format("HH", location.timeZone).toInteger() * 60) + nowDate.format("mm", location.timeZone).toInteger())
@@ -165,39 +174,73 @@ log.debug "perf roomStateHistory: ${now() - nowTime} ms"
 def replayRecover()		{
 	def nowTime = now()
 
-	if (!state.vacaDisabled)	{
-		def prvRSt = null
-		def removeHHmm
-		for (def vRD : state.vacaRoomDevices)	{
-			removeHHmm = []
-			for (def i = 1; i <= 7; i++)		{
-				for (def rSt : state.rSH[vRD.key]?."$i")	{
-					if (rSt.value == 'v' && !['a', 'e', 'o'].contains(prvRSt))		removeHHmm << [(i.toString()), (rSt.key)];
-					prvRSt = rSt.value
-				}
+	def prvRSt = null
+	def removeHHmm
+	def stateStoreSize = 0
+	for (def vRD : state.vacaRoomDevices)	{
+		removeHHmm = []
+		for (def i = 1; i <= 7; i++)		{
+			for (def rSt : state.rSH[vRD.key]?."$i")	{
+				if (rSt.value == 'v' && !['a', 'e', 'o'].contains(prvRSt))		removeHHmm << [(i.toString()), (rSt.key)];
+				else 		stateStoreSize = stateStoreSize + 8
+				prvRSt = rSt.value
 			}
-log.debug removeHHmm
-			for (def rmv : removeHHmm)		state.rSH[vRD.key]."${rmv[0]}".remove(rmv[1]);
 		}
+log.debug removeHHmm
+		for (def rmv : removeHHmm)		state.rSH[vRD.key]."${rmv[0]}".remove(rmv[1]);
 	}
+	if (stateStoreSize > 81920)		ifDebug('App state size is greater than 80,000 characters, there may be too many rooms selected for vacation replay. Check with @bangali if not sure.', 'warn');
 
 	if ((nowTime - state.lastRun) >= 1980000L)
 		if (replayAsIs)		runEvery1Minute(replaySchedule);
-		else				runIn(30, replayRandom);
+		else				runEvery30Minutes(replayRandom);
 log.debug "perf replayRecover: ${now() - nowTime} ms"
 }
 
-def replaySchedule()	{
+def replayRandom()	{
 	def nowTime = now()
 	state.lastRun = nowTime
 	def dow = getDoW()
+	def nowDate = new Date(nowTime)
+	for (def vRD : state.vacaRoomDevices)	{
+		int hh = nowDate.format("HH", location.timeZone).toInteger()
+		int mm = nowDate.format("mm", location.timeZone).toInteger()
+		def replayList = []
+		for (def i = 1; i < 30; i++)	{
+			int hhMM = ((hh * 60) + mm)
+			if (mm == 59)		break;
+			mm = mm + 1
+			def toReplay = state.rSH[vRD.key]?."$dow"?."$hhMM"
+			if (toReplay && toReplay.value != 'v')		replayList << [(toReplay.key):(toReplay.value)]
+		}
+		if (!replayList)		continue;
+log.debug replayList
+		def pickOne = replayList[(new Random().nextInt(replayList.size() - 1) + 1)]
+		def sRSt = pickOne.value
+		if (!sRST)		continue;
+log.debug sRST
+		def roomState = null
+		switch(sRSt) {
+			case 'a':	roomState = 'asleep';		break
+			case 'e':	roomState = 'engaged';		break
+			case 'o':	roomState = 'occupied';		break
+			case 'v':	roomState = 'vacant';		break
+		}
+		if (roomState)		parent.setRoomState(state.vacaRoomDevices[vRD.key].id);
+	}
+log.debug "perf replayRandom: ${now() - nowTime} ms"
+}
+
+def replaySchedule()		{
+	def nowTime = now()
+	state.lastRun = nowTime
+	def dow = getDoW().toString()
 	def nowDate = new Date(nowTime)
 	int hhMM = ((nowDate.format("HH", location.timeZone).toInteger() * 60) + nowDate.format("mm", location.timeZone).toInteger())
 	for (def vRD : state.vacaRoomDevices)	{
 		if (state.rSH[vRD.key]?."$dow")	{
 			def sRSt = state.rSH[vRD.key]."$dow"[(hhMM)]
 			if (!sRST)		continue;
-log.debug sRST
 			def roomState = null
 			switch(sRSt) {
 				case 'a':	roomState = 'asleep';		break
@@ -205,19 +248,9 @@ log.debug sRST
 				case 'o':	roomState = 'occupied';		break
 				case 'v':	roomState = 'vacant';		break
 			}
-			if (roomState)		parent.setRoomState(state.vacaRoomDevices[vRD.key].id, stateMethod);
+			if (roomState)		parent.setRoomState(state.vacaRoomDevices[vRD.key].id);
 		}
 	}
-log.debug "perf replaySchedule: ${now() - nowTime} ms"
-}
-
-def replayRandom()		{
-	def nowTime = now()
-	state.lastRun = nowTime
-	if (state.replayRandom)		return;
-	def dow = getDoW().toString()
-	def nowDate = new Date(nowTime)
-	int hhMM = ((nowDate.format("HH", location.timeZone).toInteger() * 60) + nowDate.format("mm", location.timeZone).toInteger())
 log.debug "perf replayRandom: ${now() - nowTime} ms"
 }
 

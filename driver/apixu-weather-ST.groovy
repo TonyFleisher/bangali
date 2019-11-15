@@ -25,7 +25,7 @@
 *
 *  attribution: sunrise and sunset courtesy: https://sunrise-sunset.org/
 *
-* for use with HUBITAT so no tiles
+*  attribution: tiles layout from @takis SmartWeather Station Tile 2.0 driver layout still WIP
 *
 * features:
 * - supports global weather data with free api key from apixu.com
@@ -35,18 +35,9 @@
 *
 ***********************************************************************************************************************/
 
-public static String version()      {  return "v5.1.0"  }
+public static String version()      {  return "v5.0.1"  }
 
 /***********************************************************************************************************************
-*
-* Version: 5.1.0
-*	5/18/2019: added precipication forecast data from day - 2 to day + 2
-*
-* Version: 5.0.5
-*	5/4/2019: fixed typos for feelsLike* and added condition code for day plus 1 forecasted data
-*
-* Version: 5.0.2
-*	4/20/2019: allow selection for publishing feelsLike and wind attribuets
 *
 * Version: 5.0.1
 *	3/24/2019: revert typo
@@ -104,16 +95,17 @@ import groovy.transform.Field
 
 metadata    {
     definition (name: "ApiXU Weather Driver", namespace: "bangali", author: "bangali")  {
-        capability "Actuator"
+//        capability "Actuator"
         capability "Sensor"
         capability "Polling"
         capability "Illuminance Measurement"
         capability "Temperature Measurement"
         capability "Relative Humidity Measurement"
-        capability "Pressure Measurement"
+//        capability "Pressure"
         capability "Ultraviolet Index"
 //        capability "Switch"
 
+        attribute "pressure", "string"
         attribute "name", "string"
         attribute "region", "string"
         attribute "country", "string"
@@ -143,16 +135,9 @@ metadata    {
 //        attribute "pressure_in", "string"
         attribute "precip_mm", "string"
         attribute "precip_in", "string"
-
-		attribute "precipDayMinus2", "string"
-		attribute "precipDayMinus1", "string"
-		attribute "precipDay0", "string"
-		attribute "precipDayPlus1", "string"
-		attribute "precipDayPlus2", "string"
-
         attribute "cloud", "string"
-        attribute "feelsLike_c", "string"
-        attribute "feelsLike_f", "string"
+        attribute "feelslike_c", "string"
+        attribute "feelslike_f", "string"
         attribute "vis_km", "string"
         attribute "vis_miles", "string"
 
@@ -175,7 +160,6 @@ metadata    {
         attribute "localSunrise", "string"
         attribute "localSunset", "string"
 
-		attribute "condition_codeDayPlus1", "string"
         attribute "visualDayPlus1", "string"
         attribute "visualDayPlus1WithText", "string"
         attribute "temperatureLowDayPlus1", "string"
@@ -198,15 +182,154 @@ metadata    {
 //		input "publishAttrs", "enum", title:"Publish which attributes?", required:true, multiple:true, options:attributesMap
 		for (def attr : attributesMap)
 			input "${attr.key}Publish", "bool", title: "$attr.value", required: true, defaultValue: true
-    }
+	}
 
+	tiles(scale: 2) {
+            multiAttributeTile(name:"temperature", type:"generic", width:6, height:4, canChangeIcon: false) {
+                tileAttribute("device.temperature", key: "PRIMARY_CONTROL") {
+                    attributeState("temperature",label:'${currentValue}°',
+                        backgroundColors:[
+                        [value: 32, color: "#153591"],
+                        [value: 44, color: "#1e9cbb"],
+                        [value: 59, color: "#90d2a7"],
+                        [value: 74, color: "#44b621"],
+                        [value: 84, color: "#f1d801"],
+                        [value: 92, color: "#d04e00"],
+                        [value: 98, color: "#bc2323"]
+                        ])
+                }
+                tileAttribute("device.feelslike_f", key: "SECONDARY_CONTROL") {
+                    attributeState("default", label:'Feels Like ${currentValue}°')
+                }
+            }
+/*
+            standardTile("weatherIcon", "device.weatherIcon", decoration: "flat") {
+                state "chanceflurries", icon:"st.custom.wu1.chanceflurries", label: ""
+                state "chancerain", icon:"st.custom.wu1.chancerain", label: ""
+                state "chancesleet", icon:"st.custom.wu1.chancesleet", label: ""
+                state "chancesnow", icon:"st.custom.wu1.chancesnow", label: ""
+                state "chancetstorms", icon:"st.custom.wu1.chancetstorms", label: ""
+                state "clear", icon:"st.custom.wu1.clear", label: ""
+                state "cloudy", icon:"st.custom.wu1.cloudy", label: ""
+                state "flurries", icon:"st.custom.wu1.flurries", label: ""
+                state "fog", icon:"st.custom.wu1.fog", label: ""
+                state "hazy", icon:"st.custom.wu1.hazy", label: ""
+                state "mostlycloudy", icon:"st.custom.wu1.mostlycloudy", label: ""
+                state "mostlysunny", icon:"st.custom.wu1.mostlysunny", label: ""
+                state "partlycloudy", icon:"st.custom.wu1.partlycloudy", label: ""
+                state "partlysunny", icon:"st.custom.wu1.partlysunny", label: ""
+                state "rain", icon:"st.custom.wu1.rain", label: ""
+                state "sleet", icon:"st.custom.wu1.sleet", label: ""
+                state "snow", icon:"st.custom.wu1.snow", label: ""
+                state "sunny", icon:"st.custom.wu1.sunny", label: ""
+                state "tstorms", icon:"st.custom.wu1.tstorms", label: ""
+                state "cloudy", icon:"st.custom.wu1.cloudy", label: ""
+                state "partlycloudy", icon:"st.custom.wu1.partlycloudy", label: ""
+                state "nt_chanceflurries", icon:"st.custom.wu1.nt_chanceflurries", label: ""
+                state "nt_chancerain", icon:"st.custom.wu1.nt_chancerain", label: ""
+                state "nt_chancesleet", icon:"st.custom.wu1.nt_chancesleet", label: ""
+                state "nt_chancesnow", icon:"st.custom.wu1.nt_chancesnow", label: ""
+                state "nt_chancetstorms", icon:"st.custom.wu1.nt_chancetstorms", label: ""
+                state "nt_clear", icon:"st.custom.wu1.nt_clear", label: ""
+                state "nt_cloudy", icon:"st.custom.wu1.nt_cloudy", label: ""
+                state "nt_flurries", icon:"st.custom.wu1.nt_flurries", label: ""
+                state "nt_fog", icon:"st.custom.wu1.nt_fog", label: ""
+                state "nt_hazy", icon:"st.custom.wu1.nt_hazy", label: ""
+                state "nt_mostlycloudy", icon:"st.custom.wu1.nt_mostlycloudy", label: ""
+                state "nt_mostlysunny", icon:"st.custom.wu1.nt_mostlysunny", label: ""
+                state "nt_partlycloudy", icon:"st.custom.wu1.nt_partlycloudy", label: ""
+                state "nt_partlysunny", icon:"st.custom.wu1.nt_partlysunny", label: ""
+                state "nt_sleet", icon:"st.custom.wu1.nt_sleet", label: ""
+                state "nt_rain", icon:"st.custom.wu1.nt_rain", label: ""
+                state "nt_sleet", icon:"st.custom.wu1.nt_sleet", label: ""
+                state "nt_snow", icon:"st.custom.wu1.nt_snow", label: ""
+                state "nt_sunny", icon:"st.custom.wu1.nt_sunny", label: ""
+                state "nt_tstorms", icon:"st.custom.wu1.nt_tstorms", label: ""
+                state "nt_cloudy", icon:"st.custom.wu1.nt_cloudy", label: ""
+                state "nt_partlycloudy", icon:"st.custom.wu1.nt_partlycloudy", label: ""
+            }
+            valueTile("lastSTupdate", "device.lastSTupdate", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state("default", label: 'Last Updated\n ${currentValue}')
+            }
+            valueTile("humidity", "device.humidity", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Humidity ${currentValue}%', unit:"%"
+            }
+            valueTile("weather", "device.weather", inactiveLabel: false, width: 1, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'${currentValue}'
+            }
+            valueTile("percentPrecip", "device.percentPrecip", inactiveLabel: false, width: 1, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Rain\n ${currentValue}%'
+            }
+            valueTile("percentPrecipToday", "device.percentPrecipToday", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Rain Today\n ${currentValue}'
+            }
+            valueTile("percentPrecipLastHour", "device.percentPrecipLastHour", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Rain Last Hour\n ${currentValue}'
+            }
+            valueTile("alert", "device.alert", inactiveLabel: false, width: 5, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Weather Alerts:\n ${currentValue}'
+            }
+            valueTile("rise", "device.localSunrise", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Sunrise\n ${currentValue}'
+            }
+            valueTile("set", "device.localSunset", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Sunset\n ${currentValue}'
+            }
+            valueTile("light", "device.illuminance", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'${currentValue} lux'
+            }
+            valueTile("visibility", "device.visibility", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Visibility\n ${currentValue}'
+            }
+            valueTile("uv_index", "device.uv_index", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "uv_index", label: 'UV Index ${currentValue}', unit: "UV Index"
+            }
+            standardTile("water", "device.water", inactiveLabel: false, width: 1, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label: 'updating...', icon: "st.unknown.unknown.unknown"
+                state "true",        icon: "st.alarm.water.wet",        backgroundColor:"#ff9999"
+                state "false",       icon: "st.alarm.water.dry",        backgroundColor:"#99ff99"
+            }
+            valueTile("dewpoint", "device.dewpoint", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Dewpoint ${currentValue}°'
+            }
+            valueTile("pressure", "device.pressure", inactiveLabel: false, width: 3, height: 1, decoration: "flat", wordWrap: true) {
+                state "pressure", label: 'Barometric Pressure ${currentValue}'
+            }
+            valueTile("windinfo", "device.windinfo", inactiveLabel: false, width: 3, height: 1, decoration: "flat", wordWrap: true) {
+                state "windinfo", label: 'Wind ${currentValue}'
+            }
+*/
+            valueTile("illuminance", "device.illuminance", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'${currentValue} lux'
+            }
+            valueTile("humidity", "device.humidity", inactiveLabel: false, width: 2, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label:'Humidity ${currentValue}%', unit:"%"
+            }
+            standardTile("refresh", "device.weather", inactiveLabel: false, width: 1, height: 1, decoration: "flat", wordWrap: true) {
+                state "default", label: "", action: "refresh", icon:"st.secondary.refresh"
+            }
+            valueTile("temperature2", "device.temperature", width: 1, height: 1, canChangeIcon: true) {
+                state "temperature", label: '${currentValue}°',
+                    backgroundColors:[
+                        [value: 32, color: "#153591"],
+                        [value: 44, color: "#1e9cbb"],
+                        [value: 59, color: "#90d2a7"],
+                        [value: 74, color: "#44b621"],
+                        [value: 84, color: "#f1d801"],
+                        [value: 92, color: "#d04e00"],
+                        [value: 98, color: "#bc2323"]
+                ]
+            }
+
+            main(["temperature2"])
+            details(["temperature", "feelslike_f", "illuminance", "humidity", "refresh"])
+//			details(["temperature", "feelslike", "weatherIcon", "weather", "humidity" , "dewpoint", "windinfo", "pressure", "solarradiation", "uv_index", "light", "visibility", "city", "rise", "set", "lastSTupdate", "percentPrecip", "percentPrecipToday", "percentPrecipLastHour", "water", "alert", "refresh"])}
+	}
 }
 
 def updated()   {
 	unschedule()
     state.tz_id = null
-	state.localDate = null
-	state.forecastPrecip = [date: null, precipDayMinus2:[in:999.9, mm:999.9], precipDayMinus1:[in:999.9, mm:999.9], precipDay0:[in:999.9, mm:999.9], precipDayPlus1:[in:999.9, mm:999.9], precipDayPlus2:[in:999.9, mm:999.9]]
     state.clockSeconds = true
     poll()
     "runEvery${pollEvery}Minutes"(poll)
@@ -293,12 +416,12 @@ def poll()      {
     sendEventPublish(name: "pressure", value: (isFahrenheit ? obs.current.pressure_in : obs.current.pressure_mb), unit: "${(isFahrenheit ? 'IN' : 'MBAR')}", displayed: true)
 	if (isFahrenheit)	{
 	    sendEventPublish(name: "precip_in", value: obs.current.precip_in, unit: "IN", displayed: true)
-		sendEventPublish(name: "feelsLike_f", value: obs.current.feelslike_f, unit: "F", displayed: true)
+		sendEventPublish(name: "feelslike_f", value: obs.current.feelslike_f, unit: "F", displayed: true)
 		sendEventPublish(name: "vis_miles", value: obs.current.vis_miles, unit: "MILES", displayed: true)
 	}
 	else	{
 		sendEventPublish(name: "precip_mm", value: obs.current.precip_mm, unit: "MM", displayed: true)
-		sendEventPublish(name: "feelsLike_c", value: obs.current.feelslike_c, unit: "C", displayed: true)
+		sendEventPublish(name: "feelslike_c", value: obs.current.feelslike_c, unit: "C", displayed: true)
 	    sendEventPublish(name: "vis_km", value: obs.current.vis_km, unit: "KM", displayed: true)
 	}
     sendEventPublish(name: "humidity", value: obs.current.humidity, unit: "%", displayed: true)
@@ -324,7 +447,6 @@ def poll()      {
 	def wind_mytile=(isFahrenheit ? "${Math.round(obs.current.wind_mph)}" + " mph " : "${Math.round(obs.current.wind_kph)}" + " kph ")
 	sendEventPublish(name: "wind_mytile", value: wind_mytile, displayed: true)
 
-	sendEventPublish(name: "condition_codeDayPlus1", value: obs.forecast.forecastday[0].day.condition.code, displayed: true)
     def imgNamePlus1 = getImgName(obs.forecast.forecastday[0].day.condition.code, 1)
     sendEventPublish(name: "visualDayPlus1", value: '<img src=' + imgNamePlus1 + '>', displayed: true)
     sendEventPublish(name: "visualDayPlus1WithText", value: '<img src=' + imgNamePlus1 + '><br>' + obs.forecast.forecastday[0].day.condition.text, displayed: true)
@@ -332,8 +454,6 @@ def poll()      {
                             obs.forecast.forecastday[0].day.maxtemp_c), unit: "${(isFahrenheit ? 'F' : 'C')}", displayed: true)
     sendEventPublish(name: "temperatureLowDayPlus1", value: (isFahrenheit ? obs.forecast.forecastday[0].day.mintemp_f :
                             obs.forecast.forecastday[0].day.mintemp_c), unit: "${(isFahrenheit ? 'F' : 'C')}", displayed: true)
-
-	forecastPrecip(obs.forecast)
 
 	def mytext = obs.location.name + ', ' + obs.location.region
 //	if (isFahrenheit)	{
@@ -363,29 +483,6 @@ def poll()      {
 
     sendEventPublish(name: "mytile", value: mytext, displayed: true)
     return
-}
-
-private forecastPrecip(forecast)	{
-	if (!state.tz_id)       return;
-    def nowTime = new Date()
-    def tZ = TimeZone.getTimeZone(state.tz_id)
-    def localDate = nowTime.format("yyyy-MM-dd", tZ)
-    if (localDate == state.forecastPrecip.date)		return;
-
-	state.forecastPrecip.date = localDate
-	state.forecastPrecip.precipDayMinus2 = state.forecastPrecip.precipDayMinus1
-	state.forecastPrecip.precipDayMinus1 = state.forecastPrecip.precipDay0
-	state.forecastPrecip.precipDay0 = state.forecastPrecip.precipDayPlus1
-	state.forecastPrecip.precipDayPlus1.mm = forecast.forecastday[0].day.totalprecip_mm
-	state.forecastPrecip.precipDayPlus1.in = forecast.forecastday[0].day.totalprecip_in
-	state.forecastPrecip.precipDayPlus2.mm = forecast.forecastday[1].day.totalprecip_mm
-	state.forecastPrecip.precipDayPlus2.in = forecast.forecastday[1].day.totalprecip_in
-
-	sendEventPublish(name: "precipDayMinus2", value: (isFahrenheit ? state.forecastPrecip.precipDayMinus2.in : state.forecastPrecip.precipDayMinus2.mm), unit: "${(isFahrenheit ? 'IN' : 'MM')}", displayed: true)
-	sendEventPublish(name: "precipDayMinus1", value: (isFahrenheit ? state.forecastPrecip.precipDayMinus1.in : state.forecastPrecip.precipDayMinus1.mm), unit: "${(isFahrenheit ? 'IN' : 'MM')}", displayed: true)
-	sendEventPublish(name: "precipDay0", value: (isFahrenheit ? state.forecastPrecip.precipDay0.in : state.forecastPrecip.precipDay0.mm), unit: "${(isFahrenheit ? 'IN' : 'MM')}", displayed: true)
-	sendEventPublish(name: "precipDayPlus1", value: (isFahrenheit ? state.forecastPrecip.precipDayPlus1.in : state.forecastPrecip.precipDayPlus1.mm), unit: "${(isFahrenheit ? 'IN' : 'MM')}", displayed: true)
-	sendEventPublish(name: "precipDayPlus2", value: (isFahrenheit ? state.forecastPrecip.precipDayPlus2.in : state.forecastPrecip.precipDayPlus2.mm), unit: "${(isFahrenheit ? 'IN' : 'MM')}", displayed: true)
 }
 
 def refresh()       { poll() }
@@ -669,9 +766,8 @@ private getImgName(wCode, is_day)       {
 	condition_text:		'Condition text',
 	weather:			'Condition text',
 	country:			'Country',
-	feelsLike:			'Feels like (in default unit)',
-	feelsLike_c:		'Feels like °C',
-	feelsLike_f:		'Feels like °F',
+	feelslike_c:		'Feels like °C',
+	feelslike_f:		'Feels like °F',
 	forecastIcon:		'Forecast icon',
 	humidity:			'Humidity',
 	illuminance:		'Illuminance',
@@ -695,13 +791,8 @@ private getImgName(wCode, is_day)       {
 	last_updated:		'Last updated',
 	last_updated_epoch:	'Last updated epoch',
 	mytile:				'Mytile for dashboard',
-	precip_mm:			'Precipitation MM',
 	precip_in:			'Precipitation Inches',
-	precipDayMinus2:	'Precipitation Day - 2',
-	precipDayMinus1:	'Precipitation Day - 1',
-	precipDay0:			'Precipitation Day - 0',
-	precipDayPlus1:		'Precipitation Day + 1',
-	precipDayPlus2:		'Precipitation Day + 2',
+	precip_mm:			'Precipitation MM',
 	percentPrecip:		'Percent precipitation',
 	pressure:			'Pressure',
 	temperature:		'Temperature',
@@ -710,11 +801,9 @@ private getImgName(wCode, is_day)       {
 	vis_km:				'Visibility KM',
 	vis_miles:			'Visibility miles',
 	visual:				'Visual weather',
-	condition_codeDayPlus1:	'Condition code day +1',
 	visualDayPlus1:			'Visual weather day +1',
 	visualDayPlus1WithText:	'Visual weather day +1 with text',
 	visualWithText:		'Visual weather with text',
-	wind:				'Wind (in default unit)',
 	wind_degree:		'Wind Degree',
 	wind_kph:			'Wind KPH',
 	wind_mph:			'Wind MPH',

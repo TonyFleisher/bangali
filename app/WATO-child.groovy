@@ -14,6 +14,14 @@
 *
 *  Author: bangali
 *
+*  2019-05-12   added support for contains
+*  2019-05-11   added support for logging received event
+*  2019-01-23   added support for executing RM rule action for both match and unmatched attribute
+*  2018-12-30   added support to select attribute value being compared or attribute valye from another device as first
+*					parameter for command on devices
+*  2018-12-30   added support to check for any changes to device attribute value
+*  2018-12-26   cleaned up settings bug
+*  2018-12-24	added option to use attribute value as first parameter in device command
 *  2018-10-30	display defaul room name in settings
 *  2018-10-26	change value type when retrieving from state
 *  2018-10-26	change device subscription for attribute
@@ -29,7 +37,9 @@
 *
 ***********************************************************************************************************************/
 
-public static String version()		{  return "v3.3.0"  }
+public static String version()		{  return "v5.2.0"  }
+
+import hubitat.helper.RMUtils
 
 definition		(
 	name: "WATO child app",
@@ -127,7 +137,22 @@ def wato()		{
 
 	if (attrTyp == 'Text')		app.removeSetting("attrMath");
 	else						app.removeSetting("attrCase");
+	if (attrOp && attrOp == '⬆︎⬇︎')		{
+		app.removeSetting("attrTyp")
+		app.removeSetting("attrCase")
+		app.removeSetting("attrMath")
+		app.removeSetting("attrVal")
+	}
+
+	def allCParamAttrs = [:], allUnCParamAttrs = [:]
+	if (devCParamTyp1Dev)
+		allCParamAttrs = devCParamTyp1Dev.supportedAttributes.unique{ it.name }.collectEntries{ [(it):"${it.name.capitalize()}"] }
+	if (devUnCParamTyp1Dev)
+		allUnCParamAttrs = devUnCParamTyp1Dev.supportedAttributes.unique{ it.name }.collectEntries{ [(it):"${it.name.capitalize()}"] }
+
 	def lS = updLbl()
+
+	def rules = RMUtils.getRuleList()
 
 	dynamicPage(name: "wato", title: "", install: true, uninstall: true)		{
 		section("")		{
@@ -140,41 +165,96 @@ def wato()		{
 			if (attrDev)
 				input "attr", "enum", title: "Attribute?", required:true, multiple:false, submitOnChange:true, options:allAttrs
 			if (attr)
-				input "attrOp", "enum", title: "Operator?", required:true, multiple:false, submitOnChange:true, options:["<", "<=", "=", ">=", ">", "!=", "⬆︎", "⬇︎"]
-			if (attrOp)
+				input "attrOp", "enum", title: "Operator?", required:true, multiple:false, submitOnChange:true, options:[['<':"< (less than)"], ['<=':"<= (less than or equals to)"], ['=':"= (equals to)"], ['>=':">= {greater than or equals to}"], ['>':"> {greater than}"], ['!=':"!= {not equals to}"], ['⬆︎':"⬆︎ (rises above)"], ['⬇︎':"⬇︎ (falls below)"], ['⬆︎⬇︎':"⬆︎⬇︎ (changes)"], ['⊃':"⊃ (contains)"]]
+			if (attrOp && attrOp != '⬆︎⬇︎')		{
 				input "attrTyp", "enum", title: "Type?", required:true, multiple:false, submitOnChange:true, options:(['⬆︎', '⬇︎'].contains(attrOp) ? ["Number", "Decimal"] : ["Text", "Number", "Decimal"])
-			if (attrTyp == 'Text')
-				input "attrCase", "bool", title: "Case sensitive?", required:true, multiple:false, defaultValue:true
-			else if (attrDevCount > 1)
-				input "attrMath", "enum", title: "Math?", required:true, multiple:false, options:["Avg", "Max", "Min", "Sum"]
-			if (attrTyp)	{
-				input "attrVal", "${attrTyp.toLowerCase()}", title: "Value?", required:true
-				if (attrDev && attr)		paragraph attrDev."current${attr.substring(0, 1).toUpperCase() + attr.substring(1)}".flatten().toString();
+				if (attrTyp)	{
+					if (attrTyp == 'Text')
+						input "attrCase", "bool", title: "Case sensitive?", required:true, multiple:false, defaultValue:true
+					else if (attrDevCount > 1)
+						input "attrMath", "enum", title: "Math?", required:true, multiple:false, options:["Avg", "Max", "Min", "Sum"]
+					input "attrVal", "${attrTyp.toLowerCase()}", title: "Value?", required:true
+					if (attrDev && attr)		paragraph attrDev."current${attr.substring(0, 1).toUpperCase() + attr.substring(1)}".flatten().toString();
+				}
+			}
+			if (attrTyp || (attrOp && attrOp == '⬆︎⬇︎'))	{
 				paragraph subHeaders('THEN this command', true)
-				input "dev", "capability.*", title: "Command on devices?", required:true, multiple:true, submitOnChange:true
-				input "devCmd", "enum", title: "Command on match?", required:true, multiple:false, submitOnChange:true, options:allCmds
-				if (state.cParam)		{
-					def i = 1
-					for (def cP : state.cParam)	{
-						def pT = cP.toString().toLowerCase()
-						input "devCParam$i", "$pT", title: "Command param $i ($pT)?", required:(i == 1 ? true : false)
-						i = i + 1
+				input "cmdOrRM", "enum", title: "Execute command on device or run RM action?", required:true, multiple:false, submitOnChange:true, defaultValue:'', options:[['':"Execute command"], ['RM':'Run RM action']]
+				if (!cmdOrRM)	{
+					input "dev", "capability.*", title: "Command on devices?", required:true, multiple:true, submitOnChange:true
+					input "devCmd", "enum", title: "Command on match?", required:true, multiple:false, submitOnChange:true, options:allCmds
+					if (state.cParam)		{
+						def i = 1
+						for (def cP : state.cParam)	{
+							def pT = cP.toString().toLowerCase()
+							if (i == 1)
+								input "devCParamTyp1", "enum", title: "Command param type?", required:true, submitOnChange:true, defaultValue:'', options:[['':"Value"], ['A':"This attribute"], ['D':"Attribute from another device"]]
+							if (i == 1 && devCParamTyp1)	{
+								if (devCParamTyp1 == 'D')	{
+									input "devCParamTyp1Dev", "capability.*", title: "Attribute from which device?", required:true, submitOnChange:true
+									if (devCParamTyp1Dev)
+										input "devCParamTyp1Attr", "enum", title: "Attribute?", required:true, multiple:false, submitOnChange:true, options:allCParamAttrs
+
+								}
+	//							if (settings["devCParamAttrVal$i"])
+	//								paragraph "Command param $i ($pT)?\nset use attribute value to false to set"
+	//							else
+	//								input "devCParam$i", "$pT", title: "Command param $i ($pT)?", required:(i == 1 ? true : false)
+	//							input "devCParamAttrVal$i", "bool", title: "Use attribute value from device?", required:false, submitOnChange:true
+							}
+							else	{
+								input "devCParam$i", "$pT", title: "Command param $i ($pT)?", required:(i == 1 ? true : false)
+	//							app.removeSetting("devCParamAttrVal$i")
+							}
+							i = i + 1
+						}
 					}
+					else
+						paragraph "Command does not support param"
 				}
-				else
-					paragraph "Command does not support param"
+				else	{
+					app.removeSetting("dev")
+					app.removeSetting("devCmd")
+					input "devRule", "enum", title: "Which rule?", required:(devUnRule ? false : true), multiple:false, options:rules
+				}
 				paragraph subHeaders('OTHERWISE that command', true)
-				input "devUnCmd", "enum", title: "Command on unmatch?", required:false, multiple:false, submitOnChange:true, options:allCmds
-				if (state.unCParam)		{
-					def i = 1
-					for (def cP : state.unCParam)	{
-						def pT = cP.toString().toLowerCase()
-						input "devUnCParam$i", "$pT", title: "Command param $i ($pT)?", required:(i == 1 ? true : false)
-						i = i + 1
+//				input "devUnWhich", "enum", title: "That command or RM action?", required:true, multiple:false, submitOnChange:true, defaultValue:null, options:[[null:"That command"], ['RM':'That RM action']]
+				if (!cmdOrRM)	{
+					input "devUnCmd", "enum", title: "Command on unmatch?", required:false, multiple:false, submitOnChange:true, options:allCmds
+					if (state.unCParam)		{
+						def i = 1
+						for (def cP : state.unCParam)	{
+							def pT = cP.toString().toLowerCase()
+							if (i == 1)
+								input "devUnCParamTyp1", "enum", title: "Command param type?", required:true, submitOnChange:true, defaultValue:'', options:[['':"Value"], ['A':"This attribute"], ['D':"Attribute from another device"]]
+							if (i == 1 && devUnCParamTyp1)	{
+								if (devUnCParamTyp1 == 'D')	{
+									input "devUnCParamTyp1Dev", "capability.*", title: "Attribute from which device?", required:true, submitOnChange:true
+									if (devUnCParamTyp1Dev)
+										input "devUnCParamTyp1Attr", "enum", title: "Attribute?", required:true, multiple:false, submitOnChange:true, options:allUnCParamAttrs
+
+								}
+	//							if (settings["devUnCParamAttrVal$i"])
+	//								paragraph "Command param $i ($pT)?\nset use attribute value to false to set"
+	//							else
+	//								input "devUnCParam$i", "$pT", title: "Command param $i ($pT)?", required:(i == 1 ? true : false)
+	//							input "devUnCParamAttrVal$i", "bool", title: "Use attribute value from device?", required:false, submitOnChange:true
+							}
+							else	{
+								input "devUnCParam$i", "$pT", title: "Command param $i ($pT)?", required:(i == 1 ? true : false)
+	//							app.removeSetting("devUnCParamAttrVal$i")
+							}
+							i = i + 1
+						}
 					}
+					else
+						paragraph "Command does not support param"
 				}
-				else
-					paragraph "Command does not support param"
+				else	{
+					app.removeSetting("dev")
+					app.removeSetting("devUnCmd")
+					input "devUnRule", "enum", title: "Which rule?", required:(devRule ? false : true), multiple:false, options:rules
+				}
 			}
 		}
 		section("")	{
@@ -188,13 +268,17 @@ def wato()		{
 			input "fromTime", "time", title: "From Time?", required:(toTime ? true : false), defaultValue:null, submitOnChange:true
 			input "toTime", "time", title: "To Time?", required:(fromTime ? true : false), defaultValue:null, submitOnChange:true
 		}
+		section("")		{
+			paragraph subHeaders('Logging', true, true)
+			input "log", "bool", title: "Log received event values?", required:false, defaultValue:false
+		}
 	}
 }
 
 private subHeaders(str, div = false, opt = false)	{
 	if (str.size() > 50)	str = str.substring(0, 50);
 	str = str.center(50)
-	def divider = (div ? "<hr width='75%' size='10' noshade>" : '');
+	def divider = (div ? "<hr width='100%' size='10' noshade>" : '');
 	if (opt)
 		return "$divider<div style='text-align:center;background-color:#f9f2ec;color:#999999;'>$str</div>"
 	else
@@ -212,24 +296,28 @@ def updated()		{
 	}
 }
 
+def initialize()	{  unsubscribe();	unschedule()  }
+
 private updLbl()	{
 	state.cParams = null
-	def cS = (state.cParam ? state.cParam.size() : 0)
-	for (def i = 1; i <= 10; i++)		{
-		if (settings["devCParam$i"] != null)
-		 	if (i > cS)		app.removeSetting("devCParam$i");
-			else			state.cParams = i;
-		else
-			if (state.cParams == null)		state.cParams = i - 1;
-	}
 	state.unCParams = null
-	def uS = (state.unCParam ? state.unCParam.size() : 0)
-	for (def i = 1; i <= 10; i++)		{
-		if (settings["devUnCParam$i"] != null)
-		 	if (i > uS)		app.removeSetting("devUnCParam$i");
-			else			state.unCParams = i;
-		else
-			if (state.unCParams == null)		state.unCParams = i - 1;
+	if (!cmdOrRM)	{
+		def cS = (state.cParam ? state.cParam.size() : 0)
+		for (def i = 1; i <= 10; i++)		{
+			if (settings["devCParam$i"] != null || (i == 1 && devCParamTyp1))
+			 	if (i > cS)		app.removeSetting("devCParam$i");
+				else			state.cParams = i;
+			else
+				if (state.cParams == null)		state.cParams = i - 1;
+		}
+		def uS = (state.unCParam ? state.unCParam.size() : 0)
+		for (def i = 1; i <= 10; i++)		{
+			if (settings["devUnCParam$i"] != null || (i == 1 && devUnCParamTyp1))
+			 	if (i > uS)		app.removeSetting("devUnCParam$i");
+				else			state.unCParams = i;
+			else
+				if (state.unCParams == null)		state.unCParams = i - 1;
+		}
 	}
 	def lS = lblStr()
 	def l = (appName ?: lS)
@@ -239,29 +327,40 @@ private updLbl()	{
 
 private lblStr()	{
 	def c = ''
-	for (def i = 1; i <= (state.cParams ?: 0); i++)		{
-		if (settings["devCParam$i"] != null)	c = c + (c ? ', ' : '') + settings["devCParam$i"]
-		else		break;
-	}
 	def u = ''
-	for (def i = 1; i <= (state.unCParams ?: 0); i++)		{
-		if (settings["devUnCParam$i"] != null)		u = u + (u ? ', ' : '') + settings["devUnCParam$i"]
-		else		break;
+	if (!cmdOrRM)	{
+		for (def i = 1; i <= (state.cParams ?: 0); i++)		{
+			if (settings["devCParam$i"] != null || (i == 1 && devCParamTyp1))
+				c = c + (c ? ', ' : '') + (i == 1 && devCParamTyp1 ? (devCParamTyp1 == 'D' ? '[' + devCParamTyp1Dev.toString() + ']' + ' : ' + devCParamTyp1Attr : '#') : settings["devCParam$i"])
+			else
+				break
+		}
+		for (def i = 1; i <= (state.unCParams ?: 0); i++)		{
+			if (settings["devUnCParam$i"] != null || (i == 1 && devUnCParamTyp1))
+				u = u + (u ? ', ' : '') + (i == 1 && devUnCParamTyp1 ? (devUnCParamTyp1 == 'D' ? '[' + devUnCParamTyp1Dev.toString() + ']' + ' : ' + devUnCParamTyp1Attr : '#') : settings["devUnCParam$i"])
+			else
+				break
+		}
 	}
 	def l = null
-	if (attrDev && (devCmd || devUnCmd))	{
-		l = ((state.watoDisabled ? '<FONT COLOR="ff0000">DISABLED: </FONT>' : '') + 'WHEN ' + attrDev.displayName + ' ATTRIBUTE ' + (state.attrDevCount > 1 && attrMath ? "${attrMath.toLowerCase()}($attr)" : attr) + ' ' + attrOp + ' ' + (attrCase ? "${attrVal}.ignoreCase()" : attrVal) + (devCmd ? ' THEN ' + dev + ' : ' + devCmd + (c ? '(' + c + ')' : '') : '') + (devUnCmd ? ' OTHERWISE ' + (devCmd ? '' : dev + ' : ') + devUnCmd + (u ? '(' + u + ')' : '') : '') + (inModes || (fromTime && toTime) ? ' {' : '') + (inModes ? 'modes: ' + inModes + (fromTime && toTime ? ' & ' : ' ') : '') + (fromTime && toTime ? 'time: ' + format24hrTime(new Date().parse("yyyy-MM-dd'T'HH:mm:ss.SSSZ", fromTime)) + ' - ' + format24hrTime(new Date().parse("yyyy-MM-dd'T'HH:mm:ss.SSSZ", toTime)) : '') + (inModes || (fromTime && toTime) ? '}' : ''))
-		l = l.substring(0, (l.size() > 254 ? 254 : l.size()))
+	if (attrDev)	{
+		if (devCmd || devUnCmd)		{
+			l = ((state.watoDisabled ? '<FONT COLOR="ff0000">DISABLED: </FONT>' : '') + 'WHEN ' + attrDev.displayName + ' ATTRIBUTE ' + (state.attrDevCount > 1 && attrMath ? "${attrMath.toLowerCase()}($attr)" : attr) + ' ' + attrOp + ' ' + (attrOp == '⬆︎⬇︎' ? '' : (attrCase ? "${attrVal}.ignoreCase()" : attrVal)) + (devCmd ? ' THEN ' + dev + ' : ' + devCmd + (c ? '(' + c + ')' : '') : '') + (devUnCmd ? ' OTHERWISE ' + (devCmd ? '' : dev + ' : ') + devUnCmd + (u ? '(' + u + ')' : '') : '') + (inModes || (fromTime && toTime) ? ' {' : '') + (inModes ? 'modes: ' + inModes + (fromTime && toTime ? ' & ' : ' ') : '') + (fromTime && toTime ? 'time: ' + format24hrTime(new Date().parse("yyyy-MM-dd'T'HH:mm:ss.SSSZ", fromTime)) + ' - ' + format24hrTime(new Date().parse("yyyy-MM-dd'T'HH:mm:ss.SSSZ", toTime)) : '') + (inModes || (fromTime && toTime) ? '}' : ''))
+		}
+		else if (cmdOrRM)	{
+			l = ((state.watoDisabled ? '<FONT COLOR="ff0000">DISABLED: </FONT>' : '') + 'WHEN ' + attrDev.displayName + ' ATTRIBUTE ' + (state.attrDevCount > 1 && attrMath ? "${attrMath.toLowerCase()}($attr)" : attr) + ' ' + attrOp + ' ' + (attrOp == '⬆︎⬇︎' ? '' : (attrCase ? "${attrVal}.ignoreCase()" : attrVal)) + (devRule ? ' THEN RM Action' : '') + (devUnRule ? ' OTHERWISE RM Action' : '') + (inModes || (fromTime && toTime) ? ' {' : '') + (inModes ? 'modes: ' + inModes + (fromTime && toTime ? ' & ' : ' ') : '') + (fromTime && toTime ? 'time: ' + format24hrTime(new Date().parse("yyyy-MM-dd'T'HH:mm:ss.SSSZ", fromTime)) + ' - ' + format24hrTime(new Date().parse("yyyy-MM-dd'T'HH:mm:ss.SSSZ", toTime)) : '') + (inModes || (fromTime && toTime) ? '}' : ''))
+
+		}
+		l = (l ? l.substring(0, (l.size() > 254 ? 254 : l.size())) : '')
 	}
+
 	return l
 }
 
 private format24hrTime(tTF = new Date(now()), fmt = 'HH:mm')	{  return tTF.format(fmt, location.timeZone)  }
 
-def initialize()	{  unsubscribe();	unschedule()  }
-
 def checkAttr(evt)	{
-log.debug "\tcheckAttr: name = $evt.name | value = $evt.value"
+	if (log)		log.info "\tcheckAttr: name = $evt.name | value = $evt.value | source = $evt.source";
 	if (state.watoDisabled)		return;
 	if (inModes && !inModes.contains(location.currentMode.toString()))		return;
 	if (fromTime && toTime)		{
@@ -273,13 +372,15 @@ log.debug "\tcheckAttr: name = $evt.name | value = $evt.value"
 	}
 //	eV = (state.attrDevCount == 1 ? evt.value : checkVal())
 	def eV = checkVal()
-	if (!eV)		return;
+//log.info "eV = $eV"
+	if (eV == -99999)		return;
 	def evtVal = setValType(eV)
+//log.info "$evtVal | $state.prvAttrVal"
 	if (evtVal == null)		return;
 	def aV = (attrCase ? attrVal.toLowerCase() : attrVal)
 	def match = false
 	def noCmdRun = false
-	switch(attrOp) {
+	switch(attrOp.toString()) {
 		case "<":		if (evtVal < aV)		match = true;	break
 		case "<=":		if (evtVal <= aV)		match = true;	break
 		case "=":		if (evtVal == aV)		match = true;	break
@@ -302,33 +403,64 @@ log.debug "\tcheckAttr: name = $evt.name | value = $evt.value"
 			else
 				if (prvAttrVal >= aV)		noCmdRun = true;
 			break
+		case "⬆︎⬇︎":
+			if (evtVal != state.prvAttrVal)		match = true;
+			break
+		case "⊃":
+			if (evtVal.toString().contains(aV.toString()))		match = true;
+			break
 	}
 //log.debug "$eV $attrOp $aV | $dev | $devCmd $state.cParams | $devUnCmd $state.unCParams | $match"
 	state.prvAttrVal = evtVal
 	if (noCmdRun)	return;
-	def cmd = (match ? devCmd : devUnCmd)
-	if (!cmd)		return;
-	switch((match ? (state.cParams ?: 0) : (state.unCParams ?: 0)))	{
-		case 0:
-			dev."$cmd"();	break
-		case 1:
-			dev."$cmd"(toMap((match ? devCParam1 : devUnCParam1)));		break
-		case 2:
-			dev."$cmd"((match ? devCParam1 : devUnCParam1), (match ? devCParam2 : devUnCParam2));	break
-		case 3:
-			dev."$cmd"((match ? devCParam1 : devUnCParam1), (match ? devCParam2 : devUnCParam2), (match ? devCParam3 : devUnCParam3));		break
-		default:
-			dev."$cmd"();	break
+
+	if (!cmdOrRM)	{
+		def cmd = (match ? devCmd : devUnCmd)
+		if (!cmd)		return;
+		def paramCnt = (match ? (state.cParams ?: 0) : (state.unCParams ?: 0))
+		def param1Val
+		if (paramCnt > 0)
+			param1Val = (match ? (devCParamTyp1 == 'A' ? evtVal : (devCParamTyp1 == 'D' ? devCParamTyp1Dev."current${devCParamTyp1Attr.substring(0, 1).toUpperCase() + devCParamTyp1Attr.substring(1)}" : devCParam1)) : (devUnCParamTyp1 == 'A' ? evtVal : (devUnCParamTyp1 == 'D' ? devUnCParamTyp1Dev."current${devUnCParamTyp1Attr.substring(0, 1).toUpperCase() + devUnCParamTyp1Attr.substring(1)}" : devUnCParam1)))
+		switch(paramCnt)	{
+			case 0:
+				dev."$cmd"()
+				break
+			case 1:
+				dev."$cmd"(toMap(param1Val))
+				break
+			case 2:
+				dev."$cmd"(param1Val, (match ? devCParam2 : devUnCParam2))
+				break
+			case 3:
+				dev."$cmd"(param1Val, (match ? devCParam2 : devUnCParam2), (match ? devCParam3 : devUnCParam3))
+				break
+			default:
+				dev."$cmd"()
+				break
+		}
+	}
+	else	{
+		def rule = []
+		rule << (match ? devRule : devUnRule)
+//log.info "execute rule: $rule"
+		if (!rule)		return;
+//		RMUtils.sendAction(rule, "setRuleBooleanTrue", app.label)
+		RMUtils.sendAction(rule, "runRuleAct", app.label)
+//		RMUtils.sendAction(rule, "setRuleBooleanFalse", app.label)
 	}
 }
 
 private setValType(val)	{
 	def value
-	switch(attrTyp)		{
-		case "Text":	value = (attrCase ? val.toString().toLowerCase() : val.toString());		break
-		case "Number":	value = val as Integer;		break
-		case "Decimal":	value = val as BigDecimal;	break
-		default:		value = null;				break
+	if (attrOp && attrOp == '⬆︎⬇︎')
+		value = val
+	else	{
+		switch(attrTyp)		{
+			case "Text":	value = (attrCase ? val.toString().toLowerCase() : val.toString());		break
+			case "Number":	value = val as Integer;		break
+			case "Decimal":	value = val as BigDecimal;	break
+			default:		value = null;				break
+		}
 	}
 	return value
 }
@@ -360,10 +492,10 @@ private checkVal()	{
 			}
 			break
 		default:
-			evtVal = null
+			eV = -99999
 			break
 	}
-//log.debug "aDs: $aDs | eV: $eV"
+//log.info "aDs: $aDs | eV: $eV"
 	return eV
 }
 
